@@ -1,0 +1,26 @@
+CONTEXT
+Cactus WHD is a manufacturing company (in the wellhead/valve industry) that sources metallurgic materials from suppliers. Their CEO has mandated incorporating agentic AI into business processes, and the first use case they've identified is automating the review of Mill Test Reports (MTRs) — documents that certify the chemical composition, heat treatment, and mechanical properties of raw materials from suppliers. 
+USE CASE
+Currently, quality staff manually open MTRs from a generic email inbox, compare them line-by-line against Cactus's internal CMS specifications (like the CMS 305 spec), and either approve them (filing to a network drive) or flag non-conformances back to the supplier. 
+ 
+VALUE
+They have around six people doing it full-time in China alone. 
+ 
+More info 
+We are being engaged as a Microsoft partner to build an AI-powered solution on Azure AI Foundry (procode, not low-code Copilot Studio) that would handle three stages: data extraction from scanned PDF images, interpretation/mapping against the correct spec, and a pass/fail verification with human-in-the-loop for exceptions. 
+ 
+ 
+Key stakeholders on the Cactus side are Tim Stoever (IT/Cyber director), Bryan Leach (quality/manufacturing SME), and Ahmed El Mehalawy (data/digital strategy, based in Dubai). 
+ 
+KEY NOTE
+Ahmed has pushed for a portal-based intake instead of email, wants clean data piped to Databricks for broader analytics, and cares deeply about governance, sustainability, and avoiding hallucination. 
+ 
+NEXT
+The next step coming out of the second call is for Cyclotron to deliver a proposal with solution approach, timelines, and costs, while Bryan gathers review volume data and Tim clarifies the network drive setup.
+
+There is my AI supported workflow. been working on this since 3 ish? 
+ 
+Im sure there are lots of issues - please consider all of the super specifics just ideas.
+ 
+For example, if you want to pick a different data point to prove out for validation, go for it. If you can do more than 2, cool. But dont do too many because we still need to bill for value, and if we come back in a week with half the project done, that will give them the false impression this is easier to build than it is. 
+Let me know if you have any questions sir. Talk to you tomorrow.

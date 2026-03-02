@@ -1,0 +1,8 @@
+{
+    "servers": {
+        "Cactus Wellhead AI-local-server": {
+            "type": "http",
+            "url": "http://localhost:7071/mcp"
+        }
+    }
+}

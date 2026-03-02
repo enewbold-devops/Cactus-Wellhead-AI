@@ -1,0 +1,47 @@
+Specification Name Spec Number Revision Effective Date
+Calibration Frequency for Testing
+Measuring, Monitoring, and Detection
+Equipment
+CCP-500 U 05/23/2024
+
+
+Purpose
+
+Establishes the specific calibration recall frequency for testing, measuring, monitoring, and detection
+equipment (TMMDE) at Cactus Wellhead. Only tools that are within current calibration, shall be used
+to perform all planned monitoring and measurement activities for Dimensional Inspection for API 6A
+Products.
+NOTE: If these recall frequencies differ from the frequencies referenced in specific Cactus Wellhead
+calibration procedures, the Cactus Wellhead specific procedure will be followed.
+References
+ Cactus Management System Procedure MSP 5.8, Control of Testing, Measuring, Monitoring, and
+Detection Equipment
+ Cactus Wellhead CCP-XXX series Calibration Procedures
+NOTE: The latest effective editions of the above standards and specification are included by reference
+in this work instruction. 
+
+
+
+ Pressure Gauges shall be 3 months until a recorded history is established (see below).
+ Pressure Gauges on the FRL for Pneumatic Torque Wrenches are calibrated with the wrench as a
+unit.
+ Multi-gas Monitors shall be “bump” tested prior to use per the procedures outlined in the Manufacturer’s
+Users Guide. 
+
+Establishing Calibration Cycles
+
+ Calibration frequencies shall be established based on the manufactures established
+frequencies, industrial standard frequencies, or established national or international standard
+frequencies.
+ The calibration frequency for pressure measurement instruments, that are used for final
+acceptance of product, shall be set at 3 months until a recorded history is established.
+ Calibration frequencies for pressure measurement instruments, can be increased by 3-month
+intervals based on a recorded history of stability and shall be shortened based on recorded calibration history. Extension of intervals shall be limited to 3-month increases, with a
+maximum calibration interval to not exceed 1 year.
+ Calibration intervals and when they begin shall be established in accordance with MSP 5.8.
+ A recorded history of stability for pressure measurement instruments shall be defined as 1
+cycle of calibration with less than a .5% variant of the Master to Test pressure readings as
+recorded on the initial calibration certificate.
+ Welding Control calibration frequencies shall be a maximum of 6 months until recorded
+calibration history can be established. Extension of frequencies shall be limited to 6-month
+increases, with a maximum calibration interval to not exceed 1 year. 

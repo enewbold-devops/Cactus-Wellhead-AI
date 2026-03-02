@@ -1,0 +1,383 @@
+{
+  "doc": {
+    "cms_number": "CMS-107",
+    "revision": "H",
+    "effective_date": "02/20/2023",
+    "title": "Revision H",
+    "source_file": "CMS-107.pdf"
+  },
+  "chunks": [
+    {
+      "chunk_id": "CMS-107::(root)::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "(root)"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Cactus Wellhead Material Specification",
+      "canonical_section": "root",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::CMS-107::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "CMS-107"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Revision H \n Page 1 of 4",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::DATE::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "DATE"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "AISI 4140, 125K, Low Alloy Steel NonNACE",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::H::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "H"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "02/20/2023 \nMaterial Requirement",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Scope::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Scope"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "AISI 4140, 125K Minimum Yield Strength, Low Alloy Steel, Non-NACE",
+      "canonical_section": "scope",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Product Forms::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Product Forms"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Bar and Mill Shapes, Ring Forgings, Open and Closed Die Forgings \nGeneral \nRequirements \nand References \n\uf0b7 \nCMS-002, Material Requirements for Forgings, Bars and Mill Shapes (doesn\u2019t apply \nfor heat treatment and mechanical properties) \n\uf0b7 \nASTM E45, Standard Test Methods for determining the Inclusion Contents of Steel\n\uf0b7 \nASTM E1268, Standard Practice for Assessing the Degree of Banding or \nOrientation of Microstructures Note: Severe banding as shown in Figure A1.20 of \nASTM E1268 is not permitted. \n\uf0b7 \nAPI Specification 6A, Specification for Wellhead and Christmas Tree Equipment, \nAnnex M \n\uf0b7 \nSAE AMS-H-6875A, Heat Treatment of Steel Raw Materials \nNOTE: The latest edition the referenced document applies unless a revision date is \nlisted. \nChemical \nComposition \nElement1,2 \nComposition Limits \nElement \nComposition Limits\nCarbon \n0.38 - 0.43 \nSilicon \n0.15 - 0.32 \nManganese \n0.75 - 1.00 \nChromium \n0.80 - 1.10 \nPhosphorous \n0.025 Maximum \nMolybdenum \n0.15 - 0.25 \nSulfur \n0.025 Maximum \nNickel \n0.50 Maximum \nVanadium \n0.05 Maximum \nIron \nBalance \nCopper \n0.25 Maximum \nNote 1: Elements not listed shall not be intentionally added without the permission of \nCactus Wellhead Engineering. \nNote 2: Non-specified residual elements, if analyzed shall not exceed 0.05% each or \n0.25% combined. \nMechanical \nProperties \n Properties\n Range \nTensile Strength, psi3\n145,000 (1000 MPa) Minimum \nYield Strength, psi, 0.2% Offset3 \n125,000 (862 MPa) Minimum \nElongation in 2\" Gage Length \n12% Minimum \nReduction in Area \n30% Minimum \nHardness",
+      "canonical_section": "other",
+      "params": [
+        {
+          "type": "range",
+          "lo": 0.38,
+          "hi": 0.43,
+          "unit": "Silicon",
+          "context": "ts \nElement \nComposition Limits\nCarbon \n0.38 - 0.43 \nSilicon \n0.15 - 0.32 \nManganese \n0.75 - 1.00 \nC"
+        },
+        {
+          "type": "range",
+          "lo": 0.15,
+          "hi": 0.32,
+          "unit": "Manganese",
+          "context": "on Limits\nCarbon \n0.38 - 0.43 \nSilicon \n0.15 - 0.32 \nManganese \n0.75 - 1.00 \nChromium \n0.80 - 1.10 \nPh"
+        },
+        {
+          "type": "range",
+          "lo": 0.75,
+          "hi": 1.0,
+          "unit": "Chromium",
+          "context": " 0.43 \nSilicon \n0.15 - 0.32 \nManganese \n0.75 - 1.00 \nChromium \n0.80 - 1.10 \nPhosphorous \n0.025 Maximu"
+        },
+        {
+          "type": "range",
+          "lo": 0.8,
+          "hi": 1.1,
+          "unit": "Phosphorous",
+          "context": "0.32 \nManganese \n0.75 - 1.00 \nChromium \n0.80 - 1.10 \nPhosphorous \n0.025 Maximum \nMolybdenum \n0.15 - 0.25"
+        },
+        {
+          "type": "range",
+          "lo": 0.15,
+          "hi": 0.25,
+          "unit": "Sulfur",
+          "context": "Phosphorous \n0.025 Maximum \nMolybdenum \n0.15 - 0.25 \nSulfur \n0.025 Maximum \nNickel \n0.50 Maximum \nV"
+        }
+      ]
+    },
+    {
+      "chunk_id": "CMS-107::293-327 HBW (30.9 \u2013 35 HRC)::text::p1-2",
+      "type": "text",
+      "section_path": [
+        "293-327 HBW (30.9 \u2013 35 HRC)"
+      ],
+      "page_start": 1,
+      "page_end": 2,
+      "text": "Charpy V-Notch Impact properties - Test Temperature4: 0\u00b0F (-18\u00b0C) \nLongitudinal Toughness5,6,7 15/10 (20/14) Ft-lbs (J) Min. Avg/Min. \nTransverse Toughness5,6,7 15/10 (20/14) Ft-lbs (J) Min. Avg/Min. \nNote 3: The yield strength to ultimate tensile strength ratio shall not exceed 0.90. \nThe QTC must be a full section prolongation or a sacrificial part.\nCactus Wellhead Material Specification",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::CMS-107::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "CMS-107"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Revision H \n Page 2 of 4 \nMechanical \nProperties - \nContinued \nThe longitudinal axes of tensile and impact specimens shall be taken at a mid-radius \nlocation or deeper for a solid QTC or within 1/8\u201d of the mid-wall for a hollow QTC. \nNote 4: Test temperature shall be at or below the indicated temperature. \nNote 5: Impact specimens may be taken either in the longitudinal or transverse \norientation. \nNote 6: Impact acceptance criteria is based upon 10 mm x 10 mm specimens. \nNote 7: Toughness criteria is given in terms of the required minimum average of a seat \nof three specimens (first number) followed by the minimum value for a single specimen \n(second number). Only one specimen of a set may be below the minimum average, but \nin no case lower than the single specimen minimum.",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Melt Practice::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "Melt Practice"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Electric furnace melted, vacuum degassed made to a fully killed, fine grain melting \npractice. \nLow alloy steel suppliers must guarantee that the material being supplied is capable of \nmeeting the following microcleanliness requirements when tested in accordance with \nASTM E45, Method A:",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::TABLE 1 - MICROCLEANLINESS::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "TABLE 1 - MICROCLEANLINESS"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Type A \nThin 2.0 / Heavy 1.5 \nType B \nThin 2.0 / Heavy 1.5 \nType C \nThin 2.0 / Heavy 1.5 \nType D \nThin 2.0 / Heavy 1.5",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Condition::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "Condition"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Material shall have an ASTM grain size of #5 or finer and a minimum hot work ratio of \n4:1. \nPreheat Treat \nMachining \nIf tubulars are made from trepanning barstock, the tubulars shall be heat treated after \ntrepanning. Material with an ER over 8\u201d shall be preheat treat machined to the drawing \nor EPS specified dimensions prior to heat treatment.",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Furnace \nCalibration \nHeat treat furnaces used for QTC\u2019s and production parts shall meet Equipment \nQualifications of CMS-002.",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p2-3",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 2,
+      "page_end": 3,
+      "text": "General \nMaterial shall be provided in the normalized (optional), austenitize, quenched and \ntempered condition. \nHeat treating shall be done in accordance with the methods described CMS-002, \nMaterial Requirements for Forgings, Bars and Mill Shapes. Batch heat treating shall \ncomply with the following. Cycle times apply only to temperature monitoring. \n\uf0b7 Method #1 - Furnace Atmosphere Thermocouple; or \n\uf0b7 Method #2 - Contact Surface Thermocouple. \nMethod #1 - Furnace Atmosphere Thermocouple \nThis method utilizes a thermocouple (T/C) that measures the temperature of the \nfurnace atmosphere, but not the load itself. Holding time at temperature shall begin \nafter the furnace atmosphere T/C reaches the set point temperature. Set point \ntemperature must be within the allowable temperature range prescribed in the \napplicable material specification. Unless otherwise stated in the specific material \nspecification, hold for the following times: \nNormalizing, Austenitizing, or Annealing: After set point temperature is reached, hold \nfor a minimum of \u00bd hour/inch of heaviest cross section.\nCactus Wellhead Material Specification",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::CMS-107::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "CMS-107"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "Revision H \n Page 3 of 4",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "General - \nContinued \nTempering or Aging: After set point temperature is reached, hold for a minimum of 3/4\nhour/inch of heaviest cross section. If a double temper is specified, the second temper \nshall be held for a minimum of \u00bd hour/inch of heaviest cross section. \nMethod #2 - Contact Surface Thermocouple.\nThis method uses a T/C physically in contact with the surface of a part in the load being \nheat treated. Contact shall be made on the heaviest section of the part. Holding time \ncommences after the set point temperature has been reached and shall continue for the \nminimum cycle time prescribed in the specific material specification. Set point \ntemperature must be within the allowable temperature range prescribed in the \napplicable material specification. \nMethod for continuous furnace \u2013 The QTC shall consist of a sacrificial length cut from the \nend of the bar and shall be from the same heat and heat treat lot as the material it qualifies.",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "Normalize \nAtmos/Media \nTemperature \nTime at Temp \nAir",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::(871\uf0b0C \u2013 927\uf0b0C)::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "(871\uf0b0C \u2013 927\uf0b0C)"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "\u00bd Hr/Inch of Max Thru Thickness. \n1 Hour Min \nStill Air Cool to Below 400\uf0b0F (204\uf0b0C) before processing to the next process",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "Austenitize \nAtmos/Media \nTemperature \nTime at Temp \nAir",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::(843\uf0b0C - 899\uf0b0C)::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "(843\uf0b0C - 899\uf0b0C)"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "\u00bd Hr/Inch of Max Thru \nThickness. \n1 Hour Min \nTemperature shall be at least 25F less than normalizing temperature",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "Quench\nAtmos/Media\nTime/Time at Temperature \nWater \nPolymer/Oil \n100\u00b0F (38\u00b0C) Maximum Before Quenching \n120\u00b0F (49\u00b0C) Maximum at any time during the quench cycle \nPer the quenchant manufacturer\u2019s standards \nStart temperature for polymer or oil quenchant shall be per the \nquenchant manufacturer.\nDocument the start and finish temps for quench media",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "Temper\nAtmos/Media \nTemperature \nTime at Temp \nAir",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::(482\uf0b0C - 704\uf0b0C)::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "(482\uf0b0C - 704\uf0b0C)"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "3/4 Hr/Inch of Max Thru \nThickness \n1 Hour Min \nAir cool or faster to room temperature",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Heat Treatment::text::p3-3",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 3,
+      "page_end": 3,
+      "text": "Continuous \nFurnace \nFor bars with diameters of 8\" (203 mm) or less and tubing with a wall thickness of 8\u201d \n(203mm) or less, continuous furnace heat treatment is an acceptable alternative to \nconventional batch-type heat treatment. \n Parameters Time at Temp \nAustenitizing Furnace \n Bar temp exiting final zone",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::(843\uf0b0C - 941\uf0b0C)::text::p3-4",
+      "type": "text",
+      "section_path": [
+        "(843\uf0b0C - 941\uf0b0C)"
+      ],
+      "page_start": 3,
+      "page_end": 4,
+      "text": "Austenitizing Furnace \n Min time 5 minutes (Notes) \nWater spray quench \nTempering Furnace \n Bar temp exiting final zone 900\uf0b0F - 1300\uf0b0F\nCactus Wellhead Material Specification",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::CMS-107::text::p4-4",
+      "type": "text",
+      "section_path": [
+        "CMS-107"
+      ],
+      "page_start": 4,
+      "page_end": 4,
+      "text": "Revision H \n Page 4 of 4",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::(482\uf0b0C - 704\uf0b0C)::text::p4-4",
+      "type": "text",
+      "section_path": [
+        "(482\uf0b0C - 704\uf0b0C)"
+      ],
+      "page_start": 4,
+      "page_end": 4,
+      "text": "Tempering Furnace \n Min time \n5 minutes (Notes) \nAir cool or faster to room temperature",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Notes::text::p4-4",
+      "type": "text",
+      "section_path": [
+        "Notes"
+      ],
+      "page_start": 4,
+      "page_end": 4,
+      "text": "\uf0b7\nThe bar travels through several different temperature zones which allows the bar \nto heat to an austenitic state. \n\uf0b7\nPrior to entering the tempering furnace, the bar is spray quenched. Maximum \nwater temperature at start of quench is 100\uf0b0F (38\u00b0C). \n\uf0b7\nThe tempering furnace zone temps are then selected to produce the required \ntempering effect. \n\uf0b7\nThe length of the furnace and travel speed determined the time spent in the \naustenitizing and tempering furnace and the bar diameter affects the travel speed. \n\uf0b7\nTo attain the required mechanical properties and microstructure, the time in each \nfurnace should produce the same mechanical properties as a conventional \nquench-and-temper heat treatment. \nPrepared by: \nBryan Leach \nApproved by: \nImoukhuede Dibua \nDate Prepared \nFebruary 20, 2023 \nDate Approved: \nFebruary 20, 2023",
+      "canonical_section": "notes",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-107::Revision History Table::text::p4-4",
+      "type": "text",
+      "section_path": [
+        "Revision History Table"
+      ],
+      "page_start": 4,
+      "page_end": 4,
+      "text": "Rev H \n02/20/2023 \nUpdated heat treatment section temper time note to match required time. \nRev G \n02/23/2021 \nRaised the HBN upper limit to match that of the HRC upper limit. Changed furnace \ncalibration reference to CMS-002. \nRev F \n02/20/2020 \nRaised the batch austenitize temperature limit. Added tubing wall thickness limit to \nContinuous heat treatment section. Raised the austenitizing temperature in the \ncontinuous heat treatment section. \nRev E \n09/01/2019 \nModified heat treat quench section to limit max temp throughout cycle. Revised for \ncompliance with API 6A 21st Edition. \nRev D \n09/19/2018 \nCompleted rewrite now AISI 4140 125K Low Alloy Steel with Impact Testing and \nMicrocleanliness requirements. \nRev C \n03/20/2017 \nClarified heat treat condition and heat treatment requirements \nRev B \n02/14/2012 \nEditorial changes for improvement. Polymer quench media change to align with industry \nheat treat standards. \nRev A \n09/01/2011 \nInitial Release",
+      "canonical_section": "revision_history",
+      "params": []
+    }
+  ]
+}

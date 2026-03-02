@@ -1,0 +1,168 @@
+Cactus WHD — Supplier Engagement, Specifications, and Calibration (Export)
+Generated: 2026-03-02
+
+NOTE:
+This export contains the prompts and responses from this conversation thread as captured in the chat.
+It is formatted as a readable transcript with clear speaker labels.
+
+============================================================
+TURN 1 — USER
+lets discuss Cactus Wellhead  company - manufactures and services pressure control equipment for onshore and offshore oil and gas drilling, fracking, completion and production.
+
+TURN 1 — ASSISTANT
+Sure — **Cactus Wellhead / Cactus, Inc. (NYSE: WHD)** is best understood as an equipment + field-services business focused on **surface pressure control** across the well lifecycle (drilling → completion/fracking → production), with a second leg in **spoolable pipe technologies**.
+
+## 1) What they do (plain-English)
+They design/manufacture (and also **sell, rent, and service**) the “iron” that keeps a well under control at the surface — especially for **unconventional shale** work where speed, safety, and repeatability matter.
+
+## 2) Core product/service buckets
+- **Wellhead systems** (notably their **SafeDrill®** line)
+- **Frac equipment** (e.g., **frac stacks**, **zipper manifolds**)
+- **Production trees** and related surface equipment
+- **Field service / technicians** supporting installs, swaps, maintenance, and frac operations
+
+## 3) The big strategic move: Baker Hughes SPC JV (now “Cactus International”)
+- Cactus acquired **65%** of Baker Hughes’ surface pressure control business (closing announced **Jan 2, 2026**; closing date referenced as **Jan 1, 2026** in filings/coverage).
+- This expands Cactus’ **international footprint** in surface pressure control.
+
+## 4) How their business “wins”
+- **Cycle time + safety in pressure control**
+- **Standardization + interchangeability**
+- **Service density** near basins
+- **International mix** smoothing regional cycles
+
+## 5) Suggested structure for discussion
+A) Product + operations deep dive
+B) Market + customers
+C) Corporate strategy
+
+============================================================
+TURN 2 — USER
+Lets deep dive on Cactus Wellhead customers
+
+TURN 2 — ASSISTANT
+Here’s a **customer deep dive** for **Cactus Wellhead / Cactus, Inc. (WHD)** grounded in disclosures and typical buying motions in pressure-control.
+
+## 1) Who the customers are (by “type”)
+Customer-type mix (example breakdown shown by the company in an investor presentation):
+- Large E&P ~65%
+- Private operators ~24%
+- Majors ~5%
+- SMID E&P ~6%
+
+## 2) Sole-provider behavior (stickiness)
+Cactus has highlighted that many operator customers standardize on them for wellheads and often do not use other providers.
+
+## 3) What customers buy (mapped to lifecycle)
+- Drilling: wellhead systems + install service
+- Completion/frac: frac stacks/manifolds + 24/7 field service
+- Production: trees + parts + maintenance
+
+## 4) Concentration risk
+SEC filings show at least one customer represented ~15% of revenue in 2024.
+
+## 5) Private operator expansion pattern
+They have tracked “rigs followed” with private operators as a growth signal.
+
+## 6) International customers shift (SPC JV)
+SPC revenue mix was heavily Middle East per company materials, emphasizing aftermarket.
+
+## 7) Practical customer map
+Large publics, privates, majors/IOCs, international (NOCs), midstream (spoolable side).
+
+============================================================
+TURN 3 — USER
+I want to go deep on product specifications, especially when interfacing with customer engineering requirements for chemical compositions, mechanical properties, Charpy impact requirements, Heat treatment parameters, and Hardness testing rules
+
+TURN 3 — ASSISTANT
+Understood — this is where pressure-control manufacturing QA lives: translating customer engineering requirements into controlled material/HT/testing plans.
+
+## 1) Start with the governing envelope
+- API 6A/ISO 10423 material class, temperature class, PSL/PR
+- Sour service controls (NACE MR0175 / ISO 15156)
+
+## 2) Chemical composition
+Best practice: base spec + purchasing spec, CMTR traceability, sour-service gates.
+
+## 3) Mechanical properties
+Define YS/UTS/elongation and test orientation/temperature; reference accepted methods (e.g., ASTM A370 practices).
+
+## 4) Charpy impact (CVN)
+Lock down: method, temperature, specimen size, orientation/location, acceptance criteria, sampling frequency.
+
+## 5) Heat treatment parameters
+Create a Heat Treat Procedure (HTP): temp ranges, soak rules, quench media, temper windows, re-HT limits, furnace controls; link to hardness/CVN outputs.
+
+## 6) Hardness testing rules
+Specify scale, location plan, method, frequency, retest rules; note sour-service hardness caps.
+
+## 7) Customer-facing compliance datasheet template
+Service/design basis; material; mechanical; toughness; heat treat; hardness; traceability.
+
+============================================================
+TURN 4 — USER
+Lets discuss the customer engagement methdology and how Cactus engages with vendors' products engineering specifications to achieve the engineering application requirements for their customers
+
+TURN 4 — ASSISTANT
+A realistic customer engagement methodology (Cactus-style QMS + supplier controls):
+
+- PO + ordering documents are the authoritative baseline; supplier must clarify before starting.
+- Supplier onboarding/approval: process assessment and (if required) product qualification.
+- Convert customer requirements into CTQs that drive MPP + PQP/ITP hold points and evidence.
+- Require Manufacturing Process Plan (MPP): specs/drawings, sources/sub-tiers, sequence, sign-offs.
+- Accredited labs/methods for tests; documented internal inspections per PQP/ITP.
+- Formal change/deviation control: no silent changes.
+
+Mapped to “big 5” requirements:
+chemistry, mechanicals, CVN, heat treat, hardness — each becomes CTQs with measurable evidence.
+
+============================================================
+TURN 5 — USER
+Lets analyze all three supplier engagement scenaios
+
+TURN 5 — ASSISTANT
+Analysis across three supplier scenarios with a common control spine:
+(1) Forging house (materials + HT + CVN)
+(2) Machine shop (dimensional + threads + NDE routing)
+(3) Special processes: coatings/welding/cladding (procedure qualification + HAZ hardness + PWHT + NDE)
+
+Each section covered:
+- Failure modes Cactus is preventing
+- Engagement flow: MPP requirements + process assessment + product qualification pack
+- Typical CTQs and ITP hold points
+
+Cross-scenario mechanism:
+Customer requirements → CTQs → Ordering Documents + MPP + PQP/ITP → objective evidence → controlled deviations.
+
+============================================================
+TURN 6 — USER
+Lets clarify our analysis with the attached forms for supplier engagement
+
+TURN 6 — ASSISTANT
+Integrated the two forms:
+- Approved Sub-Supplier List = who is allowed to perform specific special processes and NDT/HT.
+- Supplier Deviation Request (SDR) = the only path to disposition out-of-spec material; requires PO/part/drawing rev + heat/serial; includes accept/rework/scrap; requires tagging/including SDR with certs/BOL.
+
+Then mapped how each scenario uses:
+- Approved sub-tiers for HT/NDT/coatings/nitriding
+- SDR triggers for CTQs across forging, machining, and special processes
+
+============================================================
+TURN 7 — USER
+Lets include cactus wellheads calibration procedures and master specifications in the analysis in our discussions
+
+TURN 7 — ASSISTANT
+Added calibration + master specs into the engagement model:
+- Master Specifications define WHAT must be done (inspection, NDT, HT, welding, coatings/nitriding/plating, calibration outsourcing).
+- Calibration (CCP-500 umbrella + CCP-XXX procedures) defines HOW measurement credibility is enforced.
+  Key rules: pressure gauge 3 months until stability history; bump tests; extend intervals based on history; welding control calibration intervals.
+- Approved Sub-Suppliers constrain WHO can do special processes and NDT/HT.
+- SDR controls deviations and shipping traceability.
+
+Then applied this stack to each scenario:
+- Forging: HT + hardness + NDT + lab tests, tied to calibration intervals.
+- Machining: CIR-001 dimensional inspection + CNT NDT routing + calibrated metrology and gages.
+- Special processes: CCS/CST/CPS/CWP control procedures + welding control calibration + approved sub-tier + SDR for rework/repair.
+
+============================================================
+END OF TRANSCRIPT

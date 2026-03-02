@@ -1,0 +1,502 @@
+Cactus WHD — MTR Intake, CMS Spec Validation & Approved Provider Correlation
+Export Type: Narrative Discussion + Analysis
+Generated: 2026-03-02
+
+======================================================================
+OVERVIEW
+======================================================================
+
+This document captures the structured analysis developed across a working session
+focused on Cactus Wellhead's (NYSE: WHD) supplier engagement model for MTR (Mill
+Test Report) intake validation. The analysis correlates Cactus Master Specifications
+(CMS) to approved process providers and culminates in a machine-importable JSON
+crosswalk matrix stored at app-python/data/cms_process_crosswalk.json.
+
+The document is organized as follows:
+
+  Section 1 — Cactus Wellhead Business Context
+  Section 2 — Supplier Engagement and MTR Intake Workflow
+  Section 3 — SOP Deep Dive: CMS Specs + Approved Provider Correlation
+  Section 4 — CMS-to-Approved-Process Crosswalk (Narrative + Table)
+  Section 5 — Key Risks Identified
+  Section 6 — SOP Enforcement Rules
+  Section 7 — JSON Matrix Artifact Reference
+
+======================================================================
+SECTION 1 — CACTUS WELLHEAD BUSINESS CONTEXT
+======================================================================
+
+Cactus Wellhead (Cactus, Inc. / NYSE: WHD) is an equipment and field-services
+business focused on surface pressure control across the full well lifecycle:
+drilling, completion/fracking, and production. The company's second business leg
+covers spoolable pipe technologies (FlexSteel).
+
+Core Product and Service Buckets:
+  - Wellhead systems (notably the SafeDrill® line)
+  - Frac equipment (frac stacks, zipper manifolds)
+  - Production trees and related surface equipment
+  - Field service / technicians supporting installs, swaps, maintenance, and frac ops
+
+Strategic Context (as of early 2026):
+  Cactus acquired 65% of Baker Hughes' surface pressure control business, effective
+  January 1, 2026, forming "Cactus International." This significantly expands the
+  company's international footprint, particularly in the Middle East within the
+  NOC/IOC aftermarket segment.
+
+How the Business Wins:
+  - Cycle time and safety in pressure control execution
+  - Standardization and interchangeability of components across basins
+  - Service density proximity to key shale basins
+  - International mix to smooth regional activity cycles
+
+Engineering Context:
+  Cactus products are governed by demanding material and quality requirements
+  including:
+    - API 6A / ISO 10423 (PSL, temperature class, material class)
+    - NACE MR0175 / ISO 15156 (sour service compliance)
+    - Customer-specific engineering performance specs (EPS)
+    - Internal Cactus Master Specifications (CMS)
+
+  The "big five" controlled characteristics on all pressure-bearing material are:
+    1) Chemical composition (chemistry gating)
+    2) Mechanical properties (yield, tensile, elongation, reduction in area)
+    3) Charpy impact (CVN) — method, temperature, orientation, acceptance
+    4) Heat treatment parameters — temperature, soak, quench, temper, re-HT limits
+    5) Hardness — scale, location, frequency, method, NACE caps where applicable
+
+======================================================================
+SECTION 2 — SUPPLIER ENGAGEMENT AND MTR INTAKE WORKFLOW
+======================================================================
+
+Cactus receives MTR packets from two classes of counterparties:
+  A) Customers submitting MTRs for incoming material (customer-supplied stock)
+  B) Suppliers shipping material with an MTR/CoC packet
+
+The intake workflow is unified across both source types, then risk-branched.
+
+---
+2.1 Intake Baseline (All Sources)
+---
+
+Step 1 — Packet Receipt and Case Creation:
+  - Create an "MTR Validation Case" record: counterparty, PO/line, part, heat/lot,
+    spec/grade, material form.
+  - Ingest all attachments: PDF (text-based, scanned/OCR, hybrid, portfolio),
+    DOCX/XLSX, images (JPG/PNG/TIFF/HEIC), ZIP bundles, MSG/EML email packages.
+  - Malware scan, SHA-256 hash, and archive original files before any processing.
+  - Normalize: OCR for scanned PDFs, rotation/deskew for images, table extraction.
+
+Step 2 — Gate 0: Packet Completeness Check:
+  Minimum required data before technical review proceeds:
+    - Heat/cast number
+    - PO number and line item
+    - Part or material identifier
+    - Governing spec/grade + revision
+    - Chemistry table (per applicable CMS)
+    - Mechanical properties (tensile/yield/elongation/RA)
+    - Charpy results (when required by PO/EPS)
+    - Heat treatment actuals (when required)
+    - Hardness results (method, location, values)
+    - NDT certificate reference (when applicable)
+    - Test lab or provider identification
+  If incomplete: return as "incomplete packet" with specific punch list; do not
+  begin technical validation.
+
+Step 3 — Gate 1: Identity and Traceability:
+  - Confirm heat number on MTR matches: PO, receiving record, physical tag.
+  - Confirm product form and dimensions match PO + receiving inspection.
+  - Confirm spec/grade matches PO line and any customer flowdown.
+  Common rejection reasons at this gate:
+    - Heat number mismatch or cross-reference without certification
+    - Wrong grade or trim level (e.g., AISI 4130 submitted when 4140 required)
+    - Multiple heats aggregated without clear segregation and individual certs
+
+---
+2.2 Queue-Based Ownership Model
+---
+
+  QUEUE                    RESPONSIBLE PARTY          FUNCTION
+  -----------------        -----------------------    --------------------------
+  Intake / Doc Control     Receiving Admin / QMS      Packet completeness (Gate 0)
+  Receiving QC             Inspector / QC Tech        Identity + traceability (Gate 1)
+  QE / Metallurgy          Quality Engineer           Technical validation (Gate 2/3)
+  Quality Manager          QE or QM                  Deviation disposition
+  Records Control          Doc Control                Final lock + archive (Gate 4)
+
+---
+2.3 MTR File Format Handling (Supplier/Customer Docs)
+---
+
+  File type complexity encountered in practice:
+
+  A. PDFs:
+     - Text-based PDFs (from ERP/QMS): best case — fully searchable
+     - Scanned PDFs: image-only, require OCR extraction
+     - Hybrid PDFs: OCR text layer may have alignment or encoding artifacts
+     - PDF portfolios / multi-doc binders: multiple certs in one container
+
+  B. Office Documents:
+     - DOCX: certificate templates with typed values + signature blocks
+     - XLSX: chemistry + tensile + impact tables; high value if true tables present
+     - Issues: merged cells, hidden rows, macros, "printed-to-PDF" derivatives
+
+  C. Images:
+     - JPG/PNG/TIFF/HEIC from phone cameras, scanners, bundle tags
+     - Issues: perspective distortion, glare, low DPI, missing corners
+
+  D. Package Formats:
+     - ZIP bundles of full MTR packets
+     - MSG/EML email attachments (intact or forwarded chains)
+
+  All formats must route through a normalize-then-validate pipeline before any
+  automated field extraction or CMS-gated validation is applied.
+
+---
+2.4 Disposition Outcomes
+---
+
+  - ACCEPTED: all Gates pass, records locked to validated case
+  - ACCEPTED WITH CONDITIONS: minor open items with defined resolution path
+  - REJECTED: material fails spec limits or traceability cannot be established
+  - DEVIATION REQUIRED: out-of-spec but potentially acceptable via SDR/waiver process
+
+  No silent substitutions: any change after PO placement requires formal deviation
+  (SDR/EPS waiver) with Quality signature.
+
+---
+2.5 Supplier Performance Loop
+---
+
+  Track continuously per supplier and per supplier site:
+    - First-pass acceptance rate (by spec / by material family)
+    - Top failure causes (Charpy gap, heat number mismatch, hardness method wrong, etc.)
+    - Average queue turnaround time by gate
+    - Repeat non-conformances by supplier/site/document template
+    - SDR/waiver frequency and cycle time
+
+  Feed results back to supplier qualification and risk scoring.
+
+======================================================================
+SECTION 3 — SOP DEEP DIVE: CMS SPECS + APPROVED PROVIDER CORRELATION
+======================================================================
+
+The CMS validation framework defines which Cactus Master Specifications govern
+a given material, and which approved process providers are authorized to generate
+or attest to the required test data.
+
+The governing sequence for every MTR validation case is:
+
+  STEP 1 — Resolve applicable CMS set from PO + material/part mapping:
+    Example A: 4140 forgings → CMS-002 + CMS-107 (+ CMS-004 if Charpy required)
+    Example B: Alloy 718 → CMS-002 + CMS-305 (+ CMS-004 for Charpy)
+    Example C: 17-4PH NACE → CMS-002 + CMS-303
+
+  STEP 2 — For each required test line item on the MTR, extract:
+    - Test parameter name and value
+    - Test method and revision
+    - Provider (lab/HT/NDT supplier name + site)
+    - Equipment calibration reference (when applicable)
+
+  STEP 3 — Match provider to approved provider list:
+    - Match on: supplier_name + site_city/address + process_code + approval_status
+    - Status must be ACTIVE
+    - Site-level match required — company name alone is NOT sufficient
+    - If notes contain "SINGLE SOURCE — risk review required":
+        route to risk review queue before acceptance
+    - If notes contain "ADDRESS NEEDS MANUAL REVIEW":
+        route to Quality hold for manual verification before acceptance
+
+  STEP 4 — Gate 2/3: Technical validation against CMS limits for each resolved spec.
+    Each CTQ (Critical to Quality) is checked element by element:
+      Chemistry: element vs. min/max table in CMS
+      Mechanicals: YS, UTS, elongation, RA vs. grade limits
+      Charpy: temperature, specimen, orientation, average/individual vs. CMS-004 rules
+      Heat treat: austenitizing temp, quench media, temper temp, soak time vs. HTP
+      Hardness: scale (Rockwell/Brinell/Vickers), location, method vs. CMS rule
+      NDE: applicable method, acceptance class, applicable CNT-* code authorized
+
+  STEP 5 — Gate 4: Record lock.
+    Link accepted case to:
+      - CMS revision (exact) + cutoff/applicability date
+      - Approved provider ID(s) matched
+      - Heat/lot + PO line
+      - Disposition outcome + dispositioner identity + date
+
+======================================================================
+SECTION 4 — CMS-TO-APPROVED-PROCESS CROSSWALK (NARRATIVE + TABLE)
+======================================================================
+
+---
+CMS-002: Base Requirements (Forgings and Wrought Products)
+---
+  Scope: Foundational material requirements applied to all forgings, tubulars,
+  bars, and mill shapes procured for pressure-bearing components. Always active.
+
+  Mandatory process codes:
+    LAB-001 — accredited lab for chemistry, tensile, Charpy, and hardness
+    CHT-GEN — general heat treat supplier capability
+
+  Conditional process codes (per PO or EPS):
+    CNT-002, CNT-003, CNT-004, CNT-005, CNT-007 — NDT method as flowed
+
+  Required MTR evidence:
+    Chemistry, tensile/mechanicals, Charpy (if required), hardness,
+    heat treat actuals, heat/lot-to-PO traceability.
+
+  Key SOP note:
+    CMS-002 takes precedence over any conflicting requirement in a material-specific
+    CMS. CMS-002-1 applies specifically to API 6A PSL-3 75K yield bodies over 1000 lbs
+    during heat treating.
+
+---
+CMS-004: Charpy / CVN Impact Framework
+---
+  Scope: Charpy test parameters, sub-size correlation rules, and acceptance logic.
+  Applied in conjunction with CMS-002 and the applicable material-specific CMS
+  whenever Charpy is called out by PO or EPS.
+
+  Mandatory process codes:
+    LAB-001 — must be explicitly scoped for CVN impact testing
+
+  Key SOP note:
+    Do not assume LAB-001 approval for tensile testing automatically covers Charpy.
+    Verify impact testing capability is explicitly listed in the approved scope for
+    the specific lab site.
+
+---
+CMS-107: 4140 Low-Alloy Steel
+---
+  Scope: Material-specific requirements for AISI 4140 class; typically the most
+  common material family in pressure-control forgings. Tight chemistry and HT
+  window controls.
+
+  Mandatory process codes:
+    LAB-001, CHT-GEN
+
+  Conditional process codes:
+    CNT-005 (UT), additional CNT-* per flowdown
+
+  Required MTR evidence:
+    Chemistry vs. CMS-107 element tables, Q&T route actuals (austenitize/quench/
+    temper temps, soak, quench media), tensile + impact + hardness results,
+    HT furnace record reference.
+
+  Key SOP note:
+    Hardness caps apply. For sour-service (NACE/ISO 15156) flowdowns, validate
+    maximum hardness limits against NACE tables in addition to CMS-107 limits.
+
+---
+CMS-118: 4340 Low-Alloy Steel
+---
+  Scope: Material-specific requirements for AISI 4340 class; higher hardenability
+  than 4140. More sensitive to section size and quench media control.
+
+  Mandatory process codes:
+    LAB-001, CHT-GEN
+
+  Conditional process codes:
+    CNT-005, additional CNT-* per PO/EPS
+
+  Required MTR evidence:
+    Chemistry, HT window actuals, tensile/impact/hardness, heat/lot traceability.
+
+  Key SOP note:
+    Confirm HT supplier approval is at the site level — heavy section 4340 quench
+    capability is site-specific. Company-level approval alone is insufficient.
+
+---
+CMS-303: 17-4PH Precipitation Hardening Stainless — NACE Route
+---
+  Scope: Requirements for 17-4PH (UNS S17400) including corrosion-resistant and
+  NACE-compliant aging condition routes.
+
+  Mandatory process codes:
+    LAB-001, CHT-GEN
+
+  Conditional process codes:
+    CNT-002, CNT-003, CNT-004, CNT-005, CNT-007 per PO/EPS
+
+  Required MTR evidence:
+    Full chemistry including Cu and Nb/Cb, ferrite / microstructure evaluation
+    (where required), aging condition actuals (H900/H1025/H1150-M etc.),
+    hardness (method + limits), traceability.
+
+  Key SOP note:
+    Validate the aging condition on the MTR matches the PO/EPS requirement exactly.
+    For NACE route: verify hardness cap compliance and modified chemistry limits.
+    Ferrite and delta ferrite controls may be required — confirm LAB-001 microscopy
+    and metallography scope at the site level.
+
+---
+CMS-305: Alloy 718 / API 6ACRA / NACE Route
+---
+  Scope: Requirements for UNS N07718 (Alloy 718) following API 6ACRA requirements
+  for corrosion-resistant alloy pressure-control equipment. Highest-scrutiny spec
+  in the CMS suite.
+
+  Mandatory process codes:
+    LAB-001, CHT-GEN
+
+  Conditional process codes:
+    CNT-005, additional CNT-* as specified
+
+  Required MTR evidence:
+    Full chemistry (Nb, Mo, Ti, Al trace elements included), Charpy impact results,
+    hardness (method, location, limits), heat treat route actuals (solution anneal
+    + double age temperatures and soak times), macroetch evaluation, microstructure
+    phase examination (deleterious phase check), API 6ACRA traceability artifacts.
+
+  Key SOP note:
+    Confirm LAB-001 scope explicitly covers: ASTM A604 (macroetch), ASTM E1181
+    (grain size), metallography, and phase evaluation. Standard mechanical lab
+    scope does not cover these.
+    API 6ACRA traceability chain must be unbroken from melt source through
+    finished forging form.
+    Verify CHT-GEN and CNT-005 are not single-source for this material route.
+
+---
+COATING_PLATING: Surface Treatment Requirements
+---
+  Scope: Coating and plating process requirements when specified by PO or EPS.
+  Only activated for parts with an explicit coating or plating requirement.
+
+  Mandatory process codes (as applicable per PO):
+    CCS-608, CCS-609, CCS-610, CCS-612
+    CST-800, CST-801, CST-811
+
+  Required MTR/cert evidence:
+    Coating/plating process certs, thickness measurements, process parameters
+    (bath chemistry, cure, bake relief), lot traceability to part/PO line.
+
+  Key SOP note:
+    Validate at site level — company name alone insufficient.
+    CCS-612 and CST-811 are flagged as single-source — require risk review before
+    acceptance on any order.
+    If the primary supplier outsources coating/plating to a sub-tier, that sub-tier
+    must also be on the Cactus approved provider list under the applicable
+    process code.
+
+---
+Summary Table (Condensed)
+---
+
+  CMS SPEC       | MANDATORY CODES          | CONDITIONAL CODES (trigger)
+  ---------------|--------------------------|-------------------------------------------
+  CMS-002        | LAB-001, CHT-GEN         | CNT-002/003/004/005/007 (NDT per PO/EPS)
+  CMS-004        | LAB-001                  | — (applied when Charpy required)
+  CMS-107        | LAB-001, CHT-GEN         | CNT-005, CNT-* (per flowdown)
+  CMS-118        | LAB-001, CHT-GEN         | CNT-005, CNT-* (per flowdown)
+  CMS-303        | LAB-001, CHT-GEN         | CNT-002/003/004/005/007 (per PO/EPS)
+  CMS-305        | LAB-001, CHT-GEN         | CNT-005, CNT-* (per spec)
+  COATING_PLATING| CCS-608/609/610/612,     | — (activated only when PO requires)
+                 | CST-800/801/811          |
+
+======================================================================
+SECTION 5 — KEY RISKS IDENTIFIED
+======================================================================
+
+  1. INCOMPLETE ADDRESS RECORDS IN APPROVED PROVIDER LIST
+     Multiple provider entries are flagged "ADDRESS NEEDS MANUAL REVIEW."
+     These cannot be validated at the site level until address data is confirmed.
+     Recommendation: quarantine these records; do not auto-approve provider matches
+     against entries without verified site address until manual review is complete.
+
+  2. SINGLE-SOURCE PROCESS RISKS
+     The following process codes have single-source providers in the approved list:
+       - CCS-612 (coating)
+       - CHT-100 (heat treat — specific capability)
+       - CST-811 (surface treatment)
+       - CNT-007 (NDT method)
+     Any order requiring these services must trigger a supply chain risk review.
+     A second-source qualification plan should be initiated for each.
+
+  3. COMPANY-LEVEL VS. SITE-LEVEL APPROVAL GAPS
+     Parent-company HT delegations exist in the approved provider list.
+     The SOP must enforce that approval is validated at the individual operating
+     site (street address + city), and not assumed from a corporate parent entry.
+     This is especially critical for CHT-GEN (heat treat) and LAB-001 (testing lab).
+
+  4. LAB SCOPE COVERAGE GAPS (CMS-303 and CMS-305)
+     LAB-001 approval in the list may be granted for standard mechanical testing
+     (tensile/Charpy/hardness) without explicitly covering:
+       - Macroetch (ASTM A604)
+       - Grain size (ASTM E1181)
+       - Metallographic phase evaluation (deleterious phase detection)
+     These are required by CMS-305 and conditionally by CMS-303. Confirm scope
+     certificate lists these capabilities before routing Alloy 718 or 17-4PH
+     NACE MTRs to the lab for validation.
+
+  5. MISSING PROVIDER MATCH = NOT AUTO-REJECT
+     If a provider cannot be matched to the approved list, the correct action is
+     to route to "Needs Review" (Quality hold), not an automatic rejection.
+     The provider may be legitimately approved under a different record, or may
+     require a one-time qualification for the specific scope.
+
+======================================================================
+SECTION 6 — SOP ENFORCEMENT RULES (APPENDIX CONTENT)
+======================================================================
+
+  RULE 1: Provider match is required at the site level.
+    Required match fields: supplier_name + site address/city + process_code +
+    approval_status = ACTIVE.
+    Company name + process code alone is NOT sufficient.
+
+  RULE 2: "ADDRESS NEEDS MANUAL REVIEW" entries trigger Quality hold.
+    No MTR can be auto-accepted against a provider record with this flag active.
+    Route to Quality Engineer for manual address verification before disposition.
+
+  RULE 3: "SINGLE SOURCE — risk review required" entries trigger risk queue.
+    Add risk review step before final acceptance.
+    Document risk review outcome in MTR Validation Case record.
+
+  RULE 4: Test method present but provider code missing or mismatched.
+    Disposition = "Conditional / Needs Review."
+    Quality Engineer to resolve before final disposition.
+
+  RULE 5: All accepted cases must be locked to:
+    - CMS spec + revision + applicability date
+    - Approved provider record ID(s)
+    - Heat/lot number + PO line item
+    - Disposition outcome + dispositioner + disposition date
+
+  RULE 6: No silent changes.
+    Any change to material, source, process, or test result after PO placement
+    requires a formal SDR (Supplier Deviation Request) or EPS waiver with
+    documented Quality disposition.
+
+  RULE 7: CMS-002 always applies.
+    For any forging or wrought material purchase, CMS-002 is the floor.
+    CMS-004 is applied whenever Charpy is required. Material-specific CMS
+    (107/118/303/305) layers on top. Conflicts resolve to CMS-002.
+
+  RULE 8: Approved sub-tier traceability for outsourced processes.
+    If a primary supplier outsources any process (heat treat, coating, NDT,
+    lab testing) to a sub-tier, that sub-tier must appear in the Cactus
+    approved provider list under the applicable process code and site.
+
+======================================================================
+SECTION 7 — JSON MATRIX ARTIFACT REFERENCE
+======================================================================
+
+  File: app-python/data/cms_process_crosswalk.json
+  Created: 2026-03-02
+
+  Structure per entry:
+    cms_spec                   — CMS identifier (e.g., "CMS-002")
+    material_scope             — plain-English description of material/scope
+    mandatory_process_codes    — array of always-required approved provider codes
+    conditional_process_codes  — array of codes required per PO/EPS flowdown
+    conditional_trigger        — string describing when conditional codes activate
+    typical_mtr_evidence       — array of required evidence/data fields on MTR
+    sop_notes                  — array of enforcement notes and risk flags
+
+  Intended use:
+    - Load as lookup table in MTR intake validation engine
+    - Resolve applicable entry by cms_spec resolved from PO + material master
+    - Drive provider match checks against cms_approved_providers.json
+    - Drive evidence field completeness checklist per gate
+    - Source for SOP appendix and Quality training materials
+
+======================================================================
+END OF EXPORT
+======================================================================

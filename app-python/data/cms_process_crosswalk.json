@@ -1,0 +1,133 @@
+[
+  {
+    "cms_spec": "CMS-002",
+    "material_scope": "Base requirements for forgings and wrought products (tubulars, bars, mill shapes)",
+    "mandatory_process_codes": ["LAB-001", "CHT-GEN"],
+    "conditional_process_codes": ["CNT-002", "CNT-003", "CNT-004", "CNT-005", "CNT-007"],
+    "conditional_trigger": "NDT as required by PO or EPS flowdown",
+    "typical_mtr_evidence": [
+      "Chemistry",
+      "Tensile (mechanicals)",
+      "Charpy impact (when required)",
+      "Hardness",
+      "Heat treat actuals",
+      "Traceability (heat/lot to PO)"
+    ],
+    "sop_notes": [
+      "Baseline spec — always active for forgings/wrought products",
+      "Refer to CMS-002-1 for API 6A PSL-3 75K yield strength bodies over 1000 lbs during heat treating",
+      "CMS-002 takes precedence over any conflict with material-specific CMS"
+    ]
+  },
+  {
+    "cms_spec": "CMS-004",
+    "material_scope": "Charpy / CVN impact framework and acceptance logic",
+    "mandatory_process_codes": ["LAB-001"],
+    "conditional_process_codes": [],
+    "conditional_trigger": null,
+    "typical_mtr_evidence": [
+      "Test temperature",
+      "Specimen size (full / sub-size)",
+      "Orientation and location",
+      "Individual and average absorbed energy values",
+      "Acceptance criteria reference"
+    ],
+    "sop_notes": [
+      "Apply in conjunction with CMS-002 and material-specific CMS whenever Charpy is required by PO/EPS",
+      "Verify LAB-001 scope explicitly covers CVN impact testing capability"
+    ]
+  },
+  {
+    "cms_spec": "CMS-107",
+    "material_scope": "4140 low-alloy steel — material-specific requirements",
+    "mandatory_process_codes": ["LAB-001", "CHT-GEN"],
+    "conditional_process_codes": ["CNT-005"],
+    "conditional_trigger": "UT required per PO or EPS; additional CNT-* per flowdown",
+    "typical_mtr_evidence": [
+      "Chemistry vs. CMS limits",
+      "Quench and temper route actuals",
+      "Tensile and impact results",
+      "Hardness (method and location)",
+      "HT furnace record reference"
+    ],
+    "sop_notes": [
+      "Tight chemistry and HT window — validate element-by-element including residuals",
+      "Hardness caps apply — check sour-service limits if NACE/ISO 15156 flowed down"
+    ]
+  },
+  {
+    "cms_spec": "CMS-118",
+    "material_scope": "4340 low-alloy steel — material-specific requirements",
+    "mandatory_process_codes": ["LAB-001", "CHT-GEN"],
+    "conditional_process_codes": ["CNT-005"],
+    "conditional_trigger": "UT and additional CNT-* per PO/EPS flowdown",
+    "typical_mtr_evidence": [
+      "Chemistry",
+      "Heat treat window (austenitize / quench / temper actuals)",
+      "Tensile / impact / hardness",
+      "Heat/lot traceability"
+    ],
+    "sop_notes": [
+      "Higher hardenability than 4140 — quench media and section size controls are critical",
+      "Confirm HT supplier site-level approval (not company-level only)"
+    ]
+  },
+  {
+    "cms_spec": "CMS-303",
+    "material_scope": "17-4PH precipitation hardening stainless — NACE / corrosion-resistant route",
+    "mandatory_process_codes": ["LAB-001", "CHT-GEN"],
+    "conditional_process_codes": ["CNT-002", "CNT-003", "CNT-004", "CNT-005", "CNT-007"],
+    "conditional_trigger": "NDT per PO/EPS",
+    "typical_mtr_evidence": [
+      "Chemistry (including Cu, Nb/Cb)",
+      "Ferrite / microstructure evaluation (if required)",
+      "Condition/aging cycle actuals",
+      "Hardness (method and limits)",
+      "Traceability"
+    ],
+    "sop_notes": [
+      "Validate aging condition (H900/H1025/H1150 etc.) matches PO/EPS requirement",
+      "If NACE route: verify hardness cap compliance and modified chemistry limits",
+      "Ferrite or deleterious phase checks may be required — confirm LAB-001 scope"
+    ]
+  },
+  {
+    "cms_spec": "CMS-305",
+    "material_scope": "Alloy 718 / API 6ACRA / NACE route — nickel-base superalloy",
+    "mandatory_process_codes": ["LAB-001", "CHT-GEN"],
+    "conditional_process_codes": ["CNT-005"],
+    "conditional_trigger": "Additional CNT-* as specified by PO/EPS",
+    "typical_mtr_evidence": [
+      "Chemistry (full trace including Nb, Mo, Ti, Al)",
+      "Charpy impact results",
+      "Hardness (method, location, limits)",
+      "Heat treat route (solution anneal + double age actuals)",
+      "Macroetch / microstructure examination",
+      "API 6ACRA traceability artifacts"
+    ],
+    "sop_notes": [
+      "Highest scrutiny spec — macroetch and microstructure phase evaluation required",
+      "Confirm LAB-001 scope covers ASTM A604, ASTM E1181, metallography, and phase evaluation",
+      "API 6ACRA traceability chain must be unbroken from melt to finished form",
+      "Single-source risk: verify CHT-GEN and CNT-005 are not single-source for this material route"
+    ]
+  },
+  {
+    "cms_spec": "COATING_PLATING",
+    "material_scope": "Surface treatment requirements — coatings and plating (when flowed by PO/EPS)",
+    "mandatory_process_codes": ["CCS-608", "CCS-609", "CCS-610", "CCS-612", "CST-800", "CST-801", "CST-811"],
+    "conditional_process_codes": [],
+    "conditional_trigger": "Only active when coating/plating is specified in PO or EPS",
+    "typical_mtr_evidence": [
+      "Coating / plating process certs",
+      "Thickness measurements",
+      "Process parameters (bath chemistry, cure, etc.)",
+      "Lot traceability to part/PO"
+    ],
+    "sop_notes": [
+      "Validate at site level — company name alone is insufficient",
+      "CCS-612 and CST-811 flagged as single-source — risk review required before acceptance",
+      "Any outsourced coating/plating by primary supplier must also use approved provider list"
+    ]
+  }
+]

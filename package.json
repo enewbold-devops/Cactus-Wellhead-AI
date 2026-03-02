@@ -1,0 +1,18 @@
+{
+  "name": "cactus-wellhead-ai",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@langchain/core": "^1.1.29",
+    "@langchain/openai": "^1.2.11",
+    "foundry-local-sdk": "^0.5.0",
+    "openai": "^6.25.0"
+  },
+  "type": "module"
+}
