@@ -1,0 +1,577 @@
+Cactus WHD — Azure Functions HTTP API Guide
+Document Type: Developer Reference
+Generated: 2026-03-02
+Function App: function_app.py
+Blob Storage Module: blob_storage.py
+Container: cactus-whd (Azurite local emulator or Azure Blob Storage)
+
+======================================================================
+OVERVIEW
+======================================================================
+
+The Cactus WHD Azure Function App exposes three HTTP GET endpoints that
+return structured JSON data backed by Azure Blob Storage (or the local
+Azurite emulator during development).
+
+  Base URL (local):  http://localhost:7071/api
+  Auth level:        ANONYMOUS (no API key required)
+
+All responses are:
+  Content-Type: application/json
+  Encoding:     UTF-8
+  Body format:  JSON array [] on success, JSON object {"error":"..."} on failure
+
+HTTP methods supported: GET only across all three routes.
+
+======================================================================
+ROUTES SUMMARY
+======================================================================
+
+  #  Route                         Returns
+  -  ----------------------------  ----------------------------------------
+  1  GET /api/cms/providers        Full approved-providers list (JSON array)
+  2  GET /api/cms/crosswalk        CMS-to-process-code crosswalk (JSON array)
+  3  GET /api/cms/chunks           Filtered JSONL chunks by CMS number (JSON array)
+
+======================================================================
+ROUTE 1 — GET /api/cms/providers
+======================================================================
+
+Description:
+  Returns the complete Cactus WHD approved sub-supplier / provider list
+  from cms_approved_providers.json in the blob container.
+
+  Each record represents one approved provider for one process code at
+  one physical site. A single company with multiple sites or multiple
+  qualified process codes will appear as multiple records.
+
+URL:
+  http://localhost:7071/api/cms/providers
+
+Query Parameters:
+  None
+
+Request Headers:
+  None required. Optionally include Accept: application/json.
+
+Success Response:
+  HTTP 200 OK
+  Content-Type: application/json
+
+  Body: JSON array of provider objects.
+
+  Record schema:
+    {
+      "provider_id":       integer   — unique sequential ID in the dataset
+      "supplier_name":     string    — company name as it appears on approval record
+      "site_address":      string    — street address of the qualified site
+      "site_city":         string    — city (may be blank if flagged for manual review)
+      "site_state":        string    — 2-letter US state code (or country abbreviation)
+      "site_zip":          string    — postal/ZIP code
+      "process_code":      string    — Cactus process code (e.g. "LAB-001", "CNT-002")
+      "process_name":      string    — human-readable process name
+      "process_category":  string    — category: "NDT", "Lab", "HeatTreat", "Coating", "Plating"
+      "parent_supplier":   string    — parent company name if site operates under parent approval
+      "approval_status":   string    — "Active" or "Inactive"
+      "last_audit_date":   string    — ISO date string or empty string if not recorded
+      "notes":             string    — free-text flags (e.g. "ADDRESS NEEDS MANUAL REVIEW",
+                                       "SINGLE SOURCE — risk review required")
+    }
+
+Error Responses:
+  502 {"error": "Blob storage error: <detail>"}   — cannot reach Azurite / Azure Storage
+  500 {"error": "Unexpected error: <detail>"}      — unhandled server exception
+
+---
+Example — Python (requests)
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def get_approved_providers() -> list[dict]:
+      resp = requests.get(f"{BASE_URL}/cms/providers", timeout=30)
+      resp.raise_for_status()
+      return resp.json()
+
+  providers = get_approved_providers()
+  print(f"Total providers: {len(providers)}")
+
+  # Filter to active LAB-001 providers only
+  labs = [p for p in providers if p["process_code"] == "LAB-001"
+                                and p["approval_status"] == "Active"]
+  for lab in labs:
+      print(lab["supplier_name"], lab["site_city"], lab["site_state"])
+
+  # Flag records needing manual review
+  flagged = [p for p in providers if "MANUAL REVIEW" in p.get("notes", "")]
+  print(f"Records needing review: {len(flagged)}")
+
+  # Find single-source risks
+  single_source = [p for p in providers if "SINGLE SOURCE" in p.get("notes", "")]
+  for r in single_source:
+      print(r["supplier_name"], "|", r["process_code"])
+
+---
+Example — JavaScript (fetch)
+---
+
+  const BASE_URL = "http://localhost:7071/api";
+
+  async function getApprovedProviders() {
+    const resp = await fetch(`${BASE_URL}/cms/providers`);
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error);
+    }
+    return resp.json();
+  }
+
+  const providers = await getApprovedProviders();
+  const activeNDT = providers.filter(
+    p => p.process_category === "NDT" && p.approval_status === "Active"
+  );
+  console.log("Active NDT providers:", activeNDT.length);
+
+---
+Example — curl
+---
+
+  curl -s http://localhost:7071/api/cms/providers | python -m json.tool | head -60
+
+  # Count total records
+  curl -s http://localhost:7071/api/cms/providers | python -c "import sys,json; d=json.load(sys.stdin); print(len(d), 'providers')"
+
+======================================================================
+ROUTE 2 — GET /api/cms/crosswalk
+======================================================================
+
+Description:
+  Returns the CMS-to-approved-process crosswalk from cms_process_crosswalk.json
+  in the blob container. This is the rule matrix that maps each Cactus Master
+  Specification (CMS) to its required and conditional approved-provider process
+  codes, along with evidence and SOP enforcement notes.
+
+  Use this endpoint to determine which provider process codes are mandatory
+  or conditionally required for a given CMS spec before validating an MTR.
+
+URL:
+  http://localhost:7071/api/cms/crosswalk
+
+Query Parameters:
+  None
+
+Request Headers:
+  None required.
+
+Success Response:
+  HTTP 200 OK
+  Content-Type: application/json
+
+  Body: JSON array of crosswalk objects.
+
+  Record schema:
+    {
+      "cms_spec":                  string    — CMS identifier (e.g. "CMS-002", "CMS-305")
+      "material_scope":            string    — plain-English material/scope description
+      "mandatory_process_codes":   string[]  — process codes always required
+      "conditional_process_codes": string[]  — process codes required per PO/EPS flowdown
+      "conditional_trigger":       string|null — describes when conditional codes activate
+      "typical_mtr_evidence":      string[]  — list of required MTR data fields
+      "sop_notes":                 string[]  — SOP enforcement notes and risk flags
+    }
+
+Error Responses:
+  502 {"error": "Blob storage error: <detail>"}
+  500 {"error": "Unexpected error: <detail>"}
+
+---
+Example — Python (requests)
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def get_crosswalk() -> list[dict]:
+      resp = requests.get(f"{BASE_URL}/cms/crosswalk", timeout=30)
+      resp.raise_for_status()
+      return resp.json()
+
+  crosswalk = get_crosswalk()
+
+  # Build a lookup dict keyed by cms_spec for fast access
+  crosswalk_map = {entry["cms_spec"]: entry for entry in crosswalk}
+
+  # Resolve required codes for a given material spec
+  def get_required_codes(cms_spec: str) -> dict:
+      entry = crosswalk_map.get(cms_spec)
+      if not entry:
+          raise ValueError(f"Unknown CMS spec: {cms_spec}")
+      return {
+          "mandatory": entry["mandatory_process_codes"],
+          "conditional": entry["conditional_process_codes"],
+          "trigger": entry["conditional_trigger"],
+      }
+
+  # Example: what does CMS-305 require?
+  codes = get_required_codes("CMS-305")
+  print("CMS-305 mandatory:", codes["mandatory"])
+  print("CMS-305 conditional:", codes["conditional"])
+
+  # List all specs that require LAB-001
+  lab_required = [e["cms_spec"] for e in crosswalk
+                  if "LAB-001" in e["mandatory_process_codes"]]
+  print("Specs requiring LAB-001:", lab_required)
+
+  # Validate a provider against a resolved CMS rule
+  def validate_provider_for_cms(provider_process_code: str, cms_spec: str) -> bool:
+      entry = crosswalk_map.get(cms_spec, {})
+      all_codes = (entry.get("mandatory_process_codes", []) +
+                   entry.get("conditional_process_codes", []))
+      return provider_process_code in all_codes
+
+---
+Example — JavaScript (fetch)
+---
+
+  const BASE_URL = "http://localhost:7071/api";
+
+  async function getCrosswalk() {
+    const resp = await fetch(`${BASE_URL}/cms/crosswalk`);
+    if (!resp.ok) throw new Error((await resp.json()).error);
+    return resp.json();
+  }
+
+  const crosswalk = await getCrosswalk();
+  const crosswalkMap = Object.fromEntries(crosswalk.map(e => [e.cms_spec, e]));
+
+  // Check what evidence is needed for CMS-107
+  const cms107 = crosswalkMap["CMS-107"];
+  console.log("CMS-107 evidence required:", cms107.typical_mtr_evidence);
+  console.log("CMS-107 SOP notes:", cms107.sop_notes);
+
+---
+Example — curl
+---
+
+  curl -s http://localhost:7071/api/cms/crosswalk | python -m json.tool
+
+  # Show only cms_spec and mandatory codes
+  curl -s http://localhost:7071/api/cms/crosswalk | python -c "
+  import sys, json
+  for e in json.load(sys.stdin):
+      print(e['cms_spec'], '->', e['mandatory_process_codes'])
+  "
+
+======================================================================
+ROUTE 3 — GET /api/cms/chunks?cms_number=<CMS-XXX>
+======================================================================
+
+Description:
+  Returns all parsed chunk records from the cms_chunks.jsonl JSONL file
+  in the cms-specs/ subfolder of the blob container, filtered to records
+  where doc.cms_number matches the given cms_number parameter.
+
+  Chunk records represent extracted sections of CMS specification PDFs.
+  Each chunk includes the CMS document metadata (doc) and a specific
+  text segment with section context (chunk).
+
+  Use this endpoint to:
+    - Retrieve the full text content of a specific CMS spec for display
+    - Search within a CMS spec's extracted sections
+    - Feed spec text into an LLM/AI pipeline for MTR validation reasoning
+    - Build a spec viewer by section_path or canonical_section
+
+URL:
+  http://localhost:7071/api/cms/chunks?cms_number=CMS-002
+
+Query Parameters:
+  NAME          TYPE    REQUIRED  DESCRIPTION
+  cms_number    string  YES       The CMS spec number to retrieve chunks for.
+                                  Must match exactly (case-sensitive).
+                                  Examples: "CMS-002", "CMS-004", "CMS-107",
+                                            "CMS-118", "CMS-303", "CMS-305"
+
+Success Response:
+  HTTP 200 OK
+  Content-Type: application/json
+
+  Body: JSON array of chunk objects (may be empty [] if no match found).
+
+  Record schema:
+    {
+      "doc": {
+        "cms_number":     string  — CMS spec number (e.g. "CMS-002")
+        "revision":       string  — revision letter/number (e.g. "L")
+        "effective_date": string  — effective date string (e.g. "10/18/2024")
+        "title":          string  — document title
+        "source_file":    string  — source PDF filename (e.g. "CMS-002.pdf")
+      },
+      "chunk": {
+        "chunk_id":          string    — unique chunk identifier
+        "type":              string    — chunk type (typically "text")
+        "section_path":      string[]  — hierarchical section breadcrumb
+        "page_start":        integer   — PDF page where chunk begins (1-based)
+        "page_end":          integer   — PDF page where chunk ends (1-based)
+        "text":              string    — extracted text content of the chunk
+        "canonical_section": string    — normalised section label:
+                                         "scope", "references", "heat_treatment",
+                                         "mechanical_properties", "inspection",
+                                         "nde", "other", "root"
+        "params":            object[]  — extracted numeric parameters with
+                                         lo, hi, unit, context fields
+      }
+    }
+
+Error Responses:
+  400 {"error": "Missing required query parameter: cms_number (e.g. ?cms_number=CMS-002)"}
+                           — cms_number param was not provided
+  502 {"error": "Blob storage error: <detail>"}
+  500 {"error": "Unexpected error: <detail>"}
+
+Valid cms_number values (as of 2026-03-02):
+  CMS-002   Base requirements for forgings and wrought products
+  CMS-004   Charpy / CVN impact framework
+  CMS-107   4140 low-alloy steel
+  CMS-118   4340 low-alloy steel
+  CMS-303   17-4PH NACE route
+  CMS-305   Alloy 718 / API 6ACRA / NACE route
+
+---
+Example — Python (requests)
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def get_cms_chunks(cms_number: str) -> list[dict]:
+      resp = requests.get(
+          f"{BASE_URL}/cms/chunks",
+          params={"cms_number": cms_number},
+          timeout=30,
+      )
+      resp.raise_for_status()
+      return resp.json()
+
+  # Retrieve all CMS-002 chunks
+  chunks = get_cms_chunks("CMS-002")
+  print(f"Total CMS-002 chunks: {len(chunks)}")
+
+  # Show document metadata from the first chunk
+  if chunks:
+      doc = chunks[0]["doc"]
+      print(f"Spec: {doc['cms_number']} Rev {doc['revision']} ({doc['effective_date']})")
+
+  # Filter to heat treatment sections only
+  ht_chunks = [c for c in chunks if c["chunk"]["canonical_section"] == "heat_treatment"]
+  for c in ht_chunks:
+      print(f"\n--- {c['chunk']['section_path']} (p{c['chunk']['page_start']}) ---")
+      print(c["chunk"]["text"][:300])
+
+  # Filter to scope section
+  scope_chunks = [c for c in chunks if c["chunk"]["canonical_section"] == "scope"]
+  for c in scope_chunks:
+      print(c["chunk"]["text"])
+
+  # Extract all chunks with numeric parameters
+  param_chunks = [c for c in chunks if c["chunk"]["params"]]
+  for c in param_chunks:
+      for param in c["chunk"]["params"]:
+          print(f"  [{c['chunk']['canonical_section']}] lo={param.get('lo')} hi={param.get('hi')} unit={param.get('unit')}")
+
+  # Concatenate all text for full-spec LLM ingestion
+  full_text = "\n\n".join(c["chunk"]["text"] for c in chunks)
+  print(f"\nFull spec text length: {len(full_text)} chars")
+
+---
+Example — Python (cross-route: validate provider against resolved CMS)
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def validate_mtr_provider(cms_spec: str, provider_process_code: str, provider_name: str) -> dict:
+      """
+      Cross-reference a provider process code against the CMS crosswalk
+      and confirmed approved-providers list.
+      Returns a dict with validation outcome.
+      """
+      # 1) Check crosswalk — is the process code relevant to this CMS?
+      crosswalk = requests.get(f"{BASE_URL}/cms/crosswalk", timeout=30).json()
+      crosswalk_map = {e["cms_spec"]: e for e in crosswalk}
+      spec_entry = crosswalk_map.get(cms_spec)
+      if not spec_entry:
+          return {"valid": False, "reason": f"Unknown CMS spec: {cms_spec}"}
+
+      all_valid_codes = (spec_entry["mandatory_process_codes"] +
+                         spec_entry["conditional_process_codes"])
+      if provider_process_code not in all_valid_codes:
+          return {
+              "valid": False,
+              "reason": f"{provider_process_code} is not applicable to {cms_spec}",
+          }
+
+      # 2) Check approved providers — is the supplier + code approved?
+      providers = requests.get(f"{BASE_URL}/cms/providers", timeout=30).json()
+      matches = [
+          p for p in providers
+          if p["process_code"] == provider_process_code
+          and p["supplier_name"].lower() == provider_name.lower()
+          and p["approval_status"] == "Active"
+      ]
+      if not matches:
+          return {
+              "valid": False,
+              "reason": f"{provider_name} not found as an Active approved provider for {provider_process_code}",
+          }
+
+      # 3) Check notes for flags
+      flags = [p["notes"] for p in matches if p["notes"]]
+      return {
+          "valid": True,
+          "matched_sites": len(matches),
+          "flags": flags,
+      }
+
+  # Usage
+  result = validate_mtr_provider("CMS-002", "LAB-001", "Accu-Test Labs")
+  print(result)
+  # -> {"valid": True, "matched_sites": 1, "flags": []}
+
+  result = validate_mtr_provider("CMS-305", "CCS-612", "Houston Plating & Coatings")
+  print(result)
+  # -> {"valid": True, "matched_sites": 1, "flags": ["ADDRESS NEEDS MANUAL REVIEW; SINGLE SOURCE — risk review required"]}
+
+---
+Example — JavaScript (fetch)
+---
+
+  const BASE_URL = "http://localhost:7071/api";
+
+  async function getCmsChunks(cmsNumber) {
+    const url = new URL(`${BASE_URL}/cms/chunks`);
+    url.searchParams.set("cms_number", cmsNumber);
+    const resp = await fetch(url.toString());
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error);
+    }
+    return resp.json();
+  }
+
+  // Retrieve CMS-305 chunks and filter to NDE section
+  const chunks = await getCmsChunks("CMS-305");
+  console.log(`CMS-305 total chunks: ${chunks.length}`);
+
+  const ndeSections = chunks.filter(c => c.chunk.canonical_section === "nde");
+  ndeSections.forEach(c => {
+    console.log(`[p${c.chunk.page_start}]`, c.chunk.text.substring(0, 200));
+  });
+
+  // Build section index
+  const sectionIndex = {};
+  for (const c of chunks) {
+    const sec = c.chunk.canonical_section;
+    if (!sectionIndex[sec]) sectionIndex[sec] = [];
+    sectionIndex[sec].push(c.chunk.text);
+  }
+  console.log("Sections found:", Object.keys(sectionIndex));
+
+---
+Example — curl
+---
+
+  # Retrieve CMS-002 chunks
+  curl -s "http://localhost:7071/api/cms/chunks?cms_number=CMS-002" | python -m json.tool | head -80
+
+  # Count chunks by canonical_section
+  curl -s "http://localhost:7071/api/cms/chunks?cms_number=CMS-002" | python -c "
+  import sys, json
+  from collections import Counter
+  data = json.load(sys.stdin)
+  counts = Counter(c['chunk']['canonical_section'] for c in data)
+  for sec, n in sorted(counts.items()):
+      print(f'  {sec}: {n}')
+  "
+
+  # Test missing parameter (expect 400)
+  curl -s http://localhost:7071/api/cms/chunks
+  # -> {"error": "Missing required query parameter: cms_number (e.g. ?cms_number=CMS-002)"}
+
+  # Test unknown CMS number (expect 200 with empty array)
+  curl -s "http://localhost:7071/api/cms/chunks?cms_number=CMS-999"
+  # -> []
+
+======================================================================
+RUNNING THE FUNCTION APP LOCALLY
+======================================================================
+
+Prerequisites:
+  1. Azurite running (provides local blob storage emulator)
+     - VS Code: start via "Azurite: Start Blob Service" command
+     - CLI: npx azurite --silent --location . --debug azurite.log
+     - Or: azurite --silent
+
+  2. Blob container and data must exist in Azurite.
+     Upload blobs to the "cactus-whd" container:
+       cms_approved_providers.json  (root of container)
+       cms_process_crosswalk.json   (root of container)
+       cms-specs/cms_chunks.jsonl   (inside cms-specs/ virtual folder)
+
+  3. Python virtual environment with dependencies installed:
+       .venv\Scripts\pip install azure-functions azure-storage-blob
+
+  4. Azure Functions Core Tools installed:
+       npm install -g azure-functions-core-tools@4
+
+Start the function app:
+  .venv\Scripts\Activate.ps1
+  func start
+
+Confirm startup output shows:
+  Functions:
+    http_cms_providers: [GET] http://localhost:7071/api/cms/providers
+    http_cms_crosswalk: [GET] http://localhost:7071/api/cms/crosswalk
+    http_cms_chunks:    [GET] http://localhost:7071/api/cms/chunks
+
+======================================================================
+ERROR HANDLING REFERENCE
+======================================================================
+
+  HTTP STATUS  MEANING                          ACTION FOR CALLER
+  -----------  -------------------------------- ----------------------------------------
+  200          Success                          Parse response body as JSON array
+  400          Bad request (missing param)      Fix query string before retrying
+  500          Unhandled server error           Log and alert; do not retry immediately
+  502          Blob storage unreachable         Check Azurite is running; retry with backoff
+
+  All error responses follow the schema: {"error": "<message string>"}
+
+  Caller-side recommended pattern:
+    1. Check resp.status_code == 200 before parsing
+    2. For 400: surface the error.error message to the user
+    3. For 502: retry up to 3 times with 2s exponential backoff
+    4. For 500: log full response body to error tracking
+
+======================================================================
+CANONICAL SECTION LABELS (chunk.canonical_section)
+======================================================================
+
+  LABEL                  DESCRIPTION
+  ---------------------  ----------------------------------------------------
+  scope                  Spec applicability / purpose statement
+  references             Referenced standards (ASTM, API, ISO, SAE)
+  heat_treatment         Heat treat equipment, QTC, batch/continuous rules
+  mechanical_properties  Tensile, impact, and mechanical test requirements
+  inspection             Visual and dimensional inspection requirements
+  nde                    Nondestructive examination requirements
+  other                  All other extracted text blocks
+  root                   Top-level document header/title block
+
+======================================================================
+END OF GUIDE
+======================================================================
