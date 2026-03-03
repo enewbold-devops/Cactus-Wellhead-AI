@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cactus Wellhead MTR Portal — Powered by Cyclotron</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ═══════════════════════════════════════════════ NAV ═══ -->
+  <header class="nav-bar">
+    <div class="nav-logo">
+      <img src="../context/0 - Discovery/cyclotron-logo-white.png" alt="Cyclotron" />
+    </div>
+    <nav class="nav-tabs" role="tablist">
+      <button class="nav-tab active" data-view="upload" role="tab" aria-selected="true">Submit MTR</button>
+      <button class="nav-tab" data-view="status" role="tab" aria-selected="false">Case Status</button>
+      <button class="nav-tab" data-view="cms" role="tab" aria-selected="false">CMS Lookup</button>
+      <button class="nav-tab" data-view="history" role="tab" aria-selected="false">History</button>
+    </nav>
+  </header>
+
+  <!-- ═══════════════════════════════════════ TOAST BANNER ═══ -->
+  <div id="toast" class="toast hidden" role="alert" aria-live="polite"></div>
+
+  <!-- ═══════════════════════════════════════════ VIEWS ═══ -->
+  <main class="main-content">
+
+    <!-- ─────────────────────────── VIEW 1: Submit MTR ─── -->
+    <section id="view-upload" class="view active">
+      <div class="view-header">
+        <h1>MTR Document Intake</h1>
+        <p class="view-sub">Upload a Mill Test Report for CMS validation. Accepted formats: PDF, DOCX, XLSX, JPG, PNG, TIF.</p>
+      </div>
+
+      <div class="card upload-card">
+        <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="Drop zone — click or drag file here">
+          <div class="drop-zone-icon" aria-hidden="true">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 16 12 12 8 16"></polyline>
+              <line x1="12" y1="12" x2="12" y2="21"></line>
+              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
+            </svg>
+          </div>
+          <p class="drop-zone-label">Drag &amp; drop your MTR file here</p>
+          <p class="drop-zone-sub">or</p>
+          <label class="btn btn-outline" for="file-input">Browse File</label>
+          <input id="file-input" type="file" accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,.tif,.tiff" hidden />
+        </div>
+
+        <div id="file-preview" class="file-preview hidden">
+          <div class="file-preview-icon" aria-hidden="true">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div class="file-preview-info">
+            <span id="preview-name" class="file-preview-name"></span>
+            <span id="preview-size" class="file-preview-size"></span>
+          </div>
+          <button id="clear-file" class="btn-icon" aria-label="Remove file">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div id="upload-error" class="inline-error hidden"></div>
+
+        <div class="upload-actions">
+          <button id="submit-btn" class="btn btn-primary" disabled>
+            <span id="submit-label">Submit MTR</span>
+            <span id="submit-spinner" class="spinner hidden" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────── VIEW 2: Case Status ─── -->
+    <section id="view-status" class="view hidden">
+      <div class="view-header">
+        <h1>Case Status</h1>
+        <p class="view-sub">Enter a Case ID to track MTR processing progress.</p>
+      </div>
+
+      <div class="card">
+        <div class="case-id-row">
+          <input id="status-case-input" type="text" class="text-input" placeholder="e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6" aria-label="Case ID" />
+          <button id="status-lookup-btn" class="btn btn-primary">Look Up</button>
+        </div>
+      </div>
+
+      <div id="status-panel" class="hidden">
+        <!-- Stepper -->
+        <div class="card stepper-card">
+          <ol class="stepper" id="stepper">
+            <li class="step" data-step="received"><span class="step-dot"></span><span class="step-label">Received</span></li>
+            <li class="step" data-step="queued"><span class="step-dot"></span><span class="step-label">Queued</span></li>
+            <li class="step" data-step="processing"><span class="step-dot"></span><span class="step-label">Processing</span></li>
+            <li class="step" data-step="complete"><span class="step-dot"></span><span class="step-label">Complete</span></li>
+            <li class="step" data-step="failed"><span class="step-dot"></span><span class="step-label">Failed</span></li>
+          </ol>
+        </div>
+
+        <!-- Status detail card -->
+        <div class="card">
+          <div class="status-meta-grid" id="status-meta"></div>
+          <div id="status-error-block" class="error-block hidden"></div>
+          <div id="status-artifacts" class="hidden">
+            <h3>Processed Artifacts</h3>
+            <table class="artifacts-table">
+              <thead><tr><th>Artifact</th><th>Blob Path</th></tr></thead>
+              <tbody id="artifacts-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="poll-indicator" class="poll-indicator hidden">
+          <span class="spinner" aria-hidden="true"></span> Polling for updates…
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────── VIEW 3: CMS Lookup ─── -->
+    <section id="view-cms" class="view hidden">
+      <div class="view-header">
+        <h1>CMS Lookup</h1>
+        <p class="view-sub">Browse the approved provider list and CMS-to-process-code crosswalk.</p>
+      </div>
+
+      <div class="sub-tabs" role="tablist">
+        <button class="sub-tab active" data-sub="providers" role="tab">Approved Providers</button>
+        <button class="sub-tab" data-sub="crosswalk" role="tab">CMS Crosswalk</button>
+      </div>
+
+      <!-- Providers sub-view -->
+      <div id="sub-providers" class="sub-view">
+        <div class="card">
+          <div class="table-controls">
+            <input id="provider-filter-code" type="text" class="text-input text-input--sm" placeholder="Filter by process code…" aria-label="Filter by process code" />
+            <select id="provider-filter-status" class="select-input" aria-label="Filter by approval status">
+              <option value="">All statuses</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+            <span id="provider-count" class="record-count"></span>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="providers-table">
+              <thead>
+                <tr>
+                  <th>Supplier</th>
+                  <th>City</th>
+                  <th>State</th>
+                  <th>Process Code</th>
+                  <th>Category</th>
+                  <th>Status</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="providers-tbody">
+                <tr><td colspan="7" class="table-loading">Loading providers…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Crosswalk sub-view -->
+      <div id="sub-crosswalk" class="sub-view hidden">
+        <div id="crosswalk-grid" class="crosswalk-grid">
+          <div class="table-loading">Loading crosswalk…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────── VIEW 4: History ─── -->
+    <section id="view-history" class="view hidden">
+      <div class="view-header">
+        <h1>Case History</h1>
+        <p class="view-sub">Sessions are stored locally in your browser.</p>
+      </div>
+
+      <div class="card">
+        <div class="history-toolbar">
+          <span id="history-count" class="record-count"></span>
+          <button id="clear-history-btn" class="btn btn-danger-outline">Clear History</button>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table" id="history-table">
+            <thead>
+              <tr>
+                <th>Case ID</th>
+                <th>Filename</th>
+                <th>Submitted</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="5" class="table-empty">No cases submitted this session.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span>Cactus Wellhead MTR Portal &mdash; Local Dev</span>
+    <span id="footer-api">API: <code>http://localhost:7071/api</code></span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

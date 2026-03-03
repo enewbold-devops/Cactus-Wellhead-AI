@@ -6,7 +6,7 @@ from azure.storage.blob import BlobServiceClient
 _AZURITE_DEFAULT = (
     "DefaultEndpointsProtocol=http;"
     "AccountName=devstoreaccount1;"
-    "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tiqnqGl0R4hStSrpxQ==;"
+    "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
     "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
 )
 
@@ -54,7 +54,7 @@ class CactusWHDBlobStorage:
     
     def _write_blob_bytes(self, blob_path: str, blob_name: str, data: bytes, overwrite: bool = True) -> dict:
         """Upload raw bytes to a blob."""
-        fileblob = os.path.join("mcr", f"{blob_path}", os.path.basename(blob_name))
+        fileblob = os.path.join("mtr", f"{blob_path}", os.path.basename(blob_name))
         try:
             blob_client = self._container_client_mtr.get_blob_client(fileblob)
             blob_client.upload_blob(data, overwrite=overwrite)
@@ -118,87 +118,95 @@ class CactusWHDBlobStorage:
         return results
 
     # ------------------------------------------------------------------
-    # MTR private helpers (operate on cactus-mtr container)
+    # MTR intake blob methods  (cactus-mtr container)
+    # ------------------------------------------------------------------
+    #
+    # Blob path convention:
+    #   mtr/{case_id}/raw/{filename}                   — original upload
+    #   mtr/{case_id}/status.json                      — case status record
+    #   mtr/{case_id}/processed/{case_id}.md           — Docling markdown
+    #   mtr/{case_id}/processed/{case_id}_chunks.jsonl — one JSON line per chunk
+    #   mtr/{case_id}/processed/{case_id}_structured.json — doc + all chunks
     # ------------------------------------------------------------------
 
-    def _mtr_blob_path(self, job_id: str, *parts: str) -> str:
-        """Build a canonical blob path inside cactus-mtr: mcr/{job_id}/{parts}."""
-        return "/".join(["mcr", job_id, *parts])
+    def _mtr_blob_client(self, *path_parts: str):
+        """Return a BlobClient for a path inside the cactus-mtr container."""
+        blob_path = "/".join(path_parts)
+        return self._container_client_mtr.get_blob_client(blob_path)
 
-    def _read_mtr_blob_bytes(self, blob_path: str) -> bytes:
-        """Download a blob from cactus-mtr and return raw bytes."""
-        blob_client = self._container_client_mtr.get_blob_client(blob_path)
-        return blob_client.download_blob().readall()
+    def write_mtr_raw(self, case_id: str, file_bytes: bytes, filename: str, overwrite: bool = True) -> dict:
+        """Write the original MTR file to mtr/{case_id}/raw/{filename}."""
+        blob_path = f"mtr/{case_id}/raw/{filename}"
+        try:
+            self._mtr_blob_client(f"mtr/{case_id}/raw/{filename}").upload_blob(file_bytes, overwrite=overwrite)
+            return {"success": True, "blob": blob_path}
+        except Exception as exc:
+            return {"success": False, "error": str(exc), "blob": blob_path}
 
-    def _upload_mtr_blob_bytes(self, blob_path: str, data: bytes, overwrite: bool = True) -> str:
-        """Upload raw bytes to cactus-mtr; returns the full blob URL."""
-        blob_client = self._container_client_mtr.get_blob_client(blob_path)
-        blob_client.upload_blob(data, overwrite=overwrite)
-        return f"{self.mtrBlobEndpoint}/{blob_path}"
+    def write_mtr_status(self, case_id: str, status_dict: dict, overwrite: bool = True) -> dict:
+        """Write / update mtr/{case_id}/status.json."""
+        blob_path = f"mtr/{case_id}/status.json"
+        try:
+            raw = json.dumps(status_dict, ensure_ascii=False, indent=2).encode("utf-8")
+            self._mtr_blob_client(f"mtr/{case_id}/status.json").upload_blob(raw, overwrite=overwrite)
+            return {"success": True, "blob": blob_path}
+        except Exception as exc:
+            return {"success": False, "error": str(exc), "blob": blob_path}
 
-    # ------------------------------------------------------------------
-    # MTR public methods
-    # ------------------------------------------------------------------
+    def write_mtr_markdown(self, case_id: str, markdown: str, overwrite: bool = True) -> dict:
+        """Write Docling markdown to mtr/{case_id}/processed/{case_id}.md."""
+        blob_path = f"mtr/{case_id}/processed/{case_id}.md"
+        try:
+            raw = markdown.encode("utf-8")
+            self._mtr_blob_client(f"mtr/{case_id}/processed/{case_id}.md").upload_blob(raw, overwrite=overwrite)
+            return {"success": True, "blob": blob_path}
+        except Exception as exc:
+            return {"success": False, "error": str(exc), "blob": blob_path}
 
-    def write_mtr_original(self, job_id: str, filename: str, data: bytes) -> str:
+    def write_mtr_chunks_jsonl(self, case_id: str, chunks: list, overwrite: bool = True) -> dict:
         """
-        Store the raw uploaded MTR file.
-        Blob path: mcr/{job_id}/original/{filename}
-        Returns the blob URL.
+        Write chunk records as JSONL to mtr/{case_id}/processed/{case_id}_chunks.jsonl.
+        Each element of `chunks` must be a JSON-serialisable dict.
         """
-        path = self._mtr_blob_path(job_id, "original", filename)
-        return self._upload_mtr_blob_bytes(path, data)
+        blob_path = f"mtr/{case_id}/processed/{case_id}_chunks.jsonl"
+        try:
+            lines = "\n".join(json.dumps(c, ensure_ascii=False) for c in chunks)
+            self._mtr_blob_client(f"mtr/{case_id}/processed/{case_id}_chunks.jsonl").upload_blob(
+                lines.encode("utf-8"), overwrite=overwrite
+            )
+            return {"success": True, "blob": blob_path}
+        except Exception as exc:
+            return {"success": False, "error": str(exc), "blob": blob_path}
 
-    def write_mtr_manifest(self, job_id: str, manifest: dict) -> str:
-        """
-        Write (or overwrite) the job manifest JSON.
-        Blob path: mcr/{job_id}/job.json
-        Returns the blob URL.
-        """
-        path = self._mtr_blob_path(job_id, "job.json")
-        raw = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
-        return self._upload_mtr_blob_bytes(path, raw)
+    def write_mtr_structured_json(self, case_id: str, data: dict, overwrite: bool = True) -> dict:
+        """Write structured doc+chunks JSON to mtr/{case_id}/processed/{case_id}_structured.json."""
+        blob_path = f"mtr/{case_id}/processed/{case_id}_structured.json"
+        try:
+            raw = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+            self._mtr_blob_client(f"mtr/{case_id}/processed/{case_id}_structured.json").upload_blob(
+                raw, overwrite=overwrite
+            )
+            return {"success": True, "blob": blob_path}
+        except Exception as exc:
+            return {"success": False, "error": str(exc), "blob": blob_path}
 
-    def write_mtr_chunks_jsonl(self, job_id: str, lines: list[str]) -> str:
-        """
-        Write chunk records as JSONL (one JSON object per line).
-        Blob path: mcr/{job_id}/chunks.jsonl
-        Returns the blob URL.
-        """
-        path = self._mtr_blob_path(job_id, "chunks.jsonl")
-        raw = "\n".join(lines).encode("utf-8")
-        return self._upload_mtr_blob_bytes(path, raw)
+    def read_mtr_raw(self, case_id: str, filename: str) -> bytes:
+        """Return raw bytes for mtr/{case_id}/raw/{filename}."""
+        stream = self._mtr_blob_client(f"mtr/{case_id}/raw/{filename}").download_blob()
+        return stream.readall()
 
-    def get_mtr_manifest(self, job_id: str) -> dict:
+    def get_mtr_status(self, case_id: str) -> dict | None:
         """
-        Read and parse the job manifest JSON.
-        Raises azure.core.exceptions.ResourceNotFoundError if job_id not found.
+        Return the parsed status.json for a case, or None if the blob does not exist.
+        Callers should catch AzureError for other storage failures.
         """
-        path = self._mtr_blob_path(job_id, "job.json")
-        raw = self._read_mtr_blob_bytes(path)
-        return json.loads(raw.decode("utf-8"))
-
-    def get_mtr_chunks(self, job_id: str) -> list[dict]:
-        """
-        Read and parse all chunk records from chunks.jsonl.
-        Returns list of parsed JSON objects; empty list if file is empty.
-        """
-        path = self._mtr_blob_path(job_id, "chunks.jsonl")
-        raw = self._read_mtr_blob_bytes(path)
-        results = []
-        for line in raw.decode("utf-8").splitlines():
-            line = line.strip()
-            if line:
-                results.append(json.loads(line))
-        return results
-
-    def get_mtr_original_bytes(self, job_id: str, filename: str) -> bytes:
-        """
-        Download the original uploaded MTR file as raw bytes.
-        Blob path: mcr/{job_id}/original/{filename}
-        """
-        path = self._mtr_blob_path(job_id, "original", filename)
-        return self._read_mtr_blob_bytes(path)
+        try:
+            stream = self._mtr_blob_client(f"mtr/{case_id}/status.json").download_blob()
+            return json.loads(stream.readall().decode("utf-8"))
+        except Exception as exc:
+            if  "ResourceNotFound" in str(exc): # or "BlobNotFound" in type(exc).__name__
+                return None
+            raise
 
     # ------------------------------------------------------------------
     # General blob utilities
@@ -226,7 +234,7 @@ class CactusWHDBlobStorage:
 # Quick smoke test (run this file directly to verify connectivity)
 # ------------------------------------------------------------------
 
-if __name__ == "__main__":
+'''if __name__ == "__main__":
     client = CactusWHDBlobStorage()
 
     print("=== Blobs in container ===")
@@ -248,3 +256,4 @@ if __name__ == "__main__":
     print(f"  Total chunks matched: {len(chunks)}")
     for c in chunks[:3]:
         print(f"  [{c['chunk']['chunk_id']}] section={c['chunk']['canonical_section']} p{c['chunk']['page_start']}")
+'''

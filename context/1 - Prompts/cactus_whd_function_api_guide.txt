@@ -1,17 +1,18 @@
 Cactus WHD — Azure Functions HTTP API Guide
 Document Type: Developer Reference
-Generated: 2026-03-02
+Generated: 2026-03-02  Updated: 2026-03-03
 Function App: function_app.py
-Blob Storage Module: blob_storage.py
-Container: cactus-whd (Azurite local emulator or Azure Blob Storage)
+Blob Storage Module: py_azurite_blob_storage.py
+Queue Manager: py_azurite_queue_storage.py
+Document Processor: py_docling_chunks.py
+Containers: cactus-whd (CMS rubric data)  |  cactus-mtr (MTR intake artifacts)
 
 ======================================================================
 OVERVIEW
 ======================================================================
 
-The Cactus WHD Azure Function App exposes three HTTP GET endpoints that
-return structured JSON data backed by Azure Blob Storage (or the local
-Azurite emulator during development).
+The Cactus WHD Azure Function App exposes five HTTP endpoints backed by
+Azure Blob Storage and Azure Queue Storage (or local Azurite emulators).
 
   Base URL (local):  http://localhost:7071/api
   Auth level:        ANONYMOUS (no API key required)
@@ -19,19 +20,28 @@ Azurite emulator during development).
 All responses are:
   Content-Type: application/json
   Encoding:     UTF-8
-  Body format:  JSON array [] on success, JSON object {"error":"..."} on failure
+  Body format:  JSON array [] or object on success, JSON object {"error":"..."} on failure
 
-HTTP methods supported: GET only across all three routes.
+HTTP methods supported: GET (routes 1-3, 5) and POST (route 4).
+
+Additionally, one internal Azure Queue trigger function (mtr_intake_processor)
+handles asynchronous Docling document processing triggered by the mtr-intake-queue.
 
 ======================================================================
 ROUTES SUMMARY
 ======================================================================
 
-  #  Route                         Returns
-  -  ----------------------------  ----------------------------------------
-  1  GET /api/cms/providers        Full approved-providers list (JSON array)
-  2  GET /api/cms/crosswalk        CMS-to-process-code crosswalk (JSON array)
-  3  GET /api/cms/chunks           Filtered JSONL chunks by CMS number (JSON array)
+  #  Route                             Method  Returns
+  -  --------------------------------  ------  ----------------------------------------
+  1  GET /api/cms/providers            GET     Full approved-providers list (JSON array)
+  2  GET /api/cms/crosswalk            GET     CMS-to-process-code crosswalk (JSON array)
+  3  GET /api/cms/chunks               GET     Filtered JSONL chunks by CMS number (JSON array)
+  4  POST /api/mtr/intake              POST    Accepts MTR file upload; returns case_id (201)
+  5  GET /api/mtr/{case_id}/status     GET     MTR case processing status record (JSON object)
+
+  Internal trigger (not HTTP):
+     mtr_intake_processor — Azure Queue trigger on mtr-intake-queue
+                            Runs Docling, writes processed artifacts to cactus-mtr blob container
 
 ======================================================================
 ROUTE 1 — GET /api/cms/providers
@@ -507,23 +517,340 @@ Example — curl
   # -> []
 
 ======================================================================
+ROUTE 4 — POST /api/mtr/intake
+======================================================================
+
+Description:
+  Accepts an MTR document upload via multipart/form-data. Immediately
+  stores the original file to the cactus-mtr blob container, writes an
+  initial status.json record, and enqueues a processing message on
+  mtr-intake-queue. Returns a case_id instantly without waiting for
+  Docling processing to complete.
+
+  Docling conversion and chunking run asynchronously via the
+  mtr_intake_processor queue trigger. Poll GET /api/mtr/{case_id}/status
+  to check when processing is complete.
+
+URL:
+  http://localhost:7071/api/mtr/intake
+
+Method: POST
+
+Request Format:
+  Content-Type: multipart/form-data
+
+  Form fields:
+    file    (required)  The MTR document file. Field name must be "file".
+
+Accepted File Types:
+  Extension    MIME type
+  ----------   ----------------------------------------
+  .pdf         application/pdf
+  .docx        application/vnd.openxmlformats-officedocument.wordprocessingml.document
+  .xlsx        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+  .jpg .jpeg   image/jpeg
+  .png         image/png
+  .tif .tiff   image/tiff
+
+Success Response:
+  HTTP 201 Created
+  Content-Type: application/json
+
+  Body:
+    {
+      "case_id":      string   — UUID for the MTR validation case
+      "status":       string   — always "queued" on success
+      "filename":     string   — original filename as uploaded
+      "submitted_at": string   — ISO-8601 UTC timestamp
+      "status_url":   string   — relative URL to poll for processing status
+    }
+
+Error Responses:
+  400 {"error": "Missing required form field: 'file'..."}    — no file in request
+  400 {"error": "Uploaded file is empty."}                   — zero-byte file
+  415 {"error": "Unsupported file type '.xyz'..."}            — disallowed extension
+  502 {"error": "Blob storage error: <detail>"}              — Azurite/storage issue
+  500 {"error": "Unexpected error: <detail>"}                — unhandled exception
+
+  Degraded mode (202 Accepted):
+  If the file was stored but the queue send failed:
+    {
+      "case_id": "...",
+      "status":  "queue_error",
+      "warning": "File accepted but could not be enqueued for processing...",
+      "status_url": "/api/mtr/{case_id}/status"
+    }
+
+Blob Paths Written (cactus-mtr container):
+  mtr/{case_id}/raw/{filename}          — original file as received
+  mtr/{case_id}/status.json             — initial status record (status: queued)
+
+---
+Example — curl
+---
+
+  # Upload a PDF MTR
+  curl -X POST http://localhost:7071/api/mtr/intake \
+    -F "file=@path/to/heat_123456_mtr.pdf"
+
+  # Upload a DOCX MTR
+  curl -X POST http://localhost:7071/api/mtr/intake \
+    -F "file=@path/to/cert_package.docx"
+
+  # Expected response:
+  # {
+  #   "case_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  #   "status": "queued",
+  #   "filename": "heat_123456_mtr.pdf",
+  #   "submitted_at": "2026-03-03T16:00:00.000000+00:00",
+  #   "status_url": "/api/mtr/3fa85f64-5717-4562-b3fc-2c963f66afa6/status"
+  # }
+
+---
+Example — Python (requests)
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def submit_mtr(file_path: str) -> dict:
+      with open(file_path, "rb") as f:
+          resp = requests.post(
+              f"{BASE_URL}/mtr/intake",
+              files={"file": (file_path.split("/")[-1], f)},
+              timeout=60,
+          )
+      resp.raise_for_status()
+      return resp.json()
+
+  result = submit_mtr("heat_123456_mtr.pdf")
+  case_id = result["case_id"]
+  print(f"Case created: {case_id}")
+  print(f"Poll: {BASE_URL}{result['status_url']}")
+
+---
+Example — Python (submit + poll)
+---
+
+  import requests, time
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def submit_and_wait(file_path: str, poll_interval: int = 5, timeout: int = 300) -> dict:
+      """Submit an MTR and poll until processing is complete or failed."""
+      # 1. Submit
+      with open(file_path, "rb") as f:
+          resp = requests.post(
+              f"{BASE_URL}/mtr/intake",
+              files={"file": (file_path.split("/")[-1], f)},
+              timeout=60,
+          )
+      resp.raise_for_status()
+      result = resp.json()
+      case_id = result["case_id"]
+      status_url = f"{BASE_URL}/mtr/{case_id}/status"
+      print(f"Submitted case_id={case_id}, status=queued")
+
+      # 2. Poll
+      elapsed = 0
+      while elapsed < timeout:
+          time.sleep(poll_interval)
+          elapsed += poll_interval
+          status = requests.get(status_url, timeout=30).json()
+          print(f"  [{elapsed}s] status={status['status']}")
+          if status["status"] in ("complete", "failed"):
+              return status
+      raise TimeoutError(f"Processing did not complete within {timeout}s")
+
+  result = submit_and_wait("heat_123456_mtr.pdf")
+  print(f"Final status: {result['status']}")
+  if result["status"] == "complete":
+      print(f"Chunks: {result['chunk_count']}")
+      print(f"Artifacts: {result['artifacts']}")
+
+======================================================================
+ROUTE 5 — GET /api/mtr/{case_id}/status
+======================================================================
+
+Description:
+  Returns the current processing status record for a given MTR case.
+  The case_id is the UUID returned by POST /api/mtr/intake.
+
+  Status transitions:
+    queued → processing → complete
+                        → failed
+                        → queue_error   (file stored, queue send failed)
+
+URL:
+  http://localhost:7071/api/mtr/{case_id}/status
+
+Method: GET
+
+Path Parameters:
+  NAME       TYPE    REQUIRED  DESCRIPTION
+  case_id    string  YES       UUID returned by POST /api/mtr/intake
+
+Success Response:
+  HTTP 200 OK
+  Content-Type: application/json
+
+  Status record schema:
+    {
+      "case_id":       string        — UUID for the MTR validation case
+      "status":        string        — "queued" | "processing" | "complete" | "failed"
+      "filename":      string        — original filename
+      "submitted_at":  string        — ISO-8601 UTC submission timestamp
+      "completed_at":  string|null   — ISO-8601 UTC completion timestamp (null if not done)
+      "chunk_count":   integer|null  — number of Docling chunks produced (complete only)
+      "artifacts": {
+        "raw":             string    — blob path: mtr/{case_id}/raw/{filename}
+        "markdown":        string    — blob path: mtr/{case_id}/processed/{case_id}.md
+        "chunks_jsonl":    string    — blob path: mtr/{case_id}/processed/{case_id}_chunks.jsonl
+        "structured_json": string    — blob path: mtr/{case_id}/processed/{case_id}_structured.json
+      },
+      "error":         string|null   — error message if status is "failed", else null
+    }
+
+Error Responses:
+  404 {"error": "Case not found: <case_id>"}    — unknown or invalid case_id
+  502 {"error": "Blob storage error: <detail>"} — storage unreachable
+  500 {"error": "Unexpected error: <detail>"}   — unhandled exception
+
+---
+Example — curl
+---
+
+  CASE_ID="3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+  curl -s "http://localhost:7071/api/mtr/${CASE_ID}/status" | python -m json.tool
+
+  # Queued:
+  # { "case_id": "3fa8...", "status": "queued", "filename": "heat_123456_mtr.pdf",
+  #   "submitted_at": "2026-03-03T16:00:00+00:00", "completed_at": null, "error": null }
+
+  # Complete:
+  # { "case_id": "3fa8...", "status": "complete", "filename": "heat_123456_mtr.pdf",
+  #   "submitted_at": "...", "completed_at": "...", "chunk_count": 14,
+  #   "artifacts": { "raw": "mtr/3fa8.../raw/...", "markdown": "mtr/3fa8.../processed/..." ... },
+  #   "error": null }
+
+---
+Example — Python (requests)
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def get_mtr_status(case_id: str) -> dict:
+      resp = requests.get(f"{BASE_URL}/mtr/{case_id}/status", timeout=30)
+      if resp.status_code == 404:
+          raise ValueError(f"Unknown case: {case_id}")
+      resp.raise_for_status()
+      return resp.json()
+
+  status = get_mtr_status("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+  print(f"Status: {status['status']}")
+  if status["status"] == "complete":
+      print(f"Chunks produced: {status['chunk_count']}")
+      print(f"Markdown path: {status['artifacts']['markdown']}")
+
+======================================================================
+INTERNAL — QUEUE TRIGGER: mtr_intake_processor
+======================================================================
+
+This function is not an HTTP endpoint. It is triggered automatically by
+Azure Functions when a message appears on the mtr-intake-queue queue.
+
+Queue name: mtr-intake-queue
+Poison queue: mtr-intake-queue-poison (auto-created by Functions runtime)
+Connection: AzureWebJobsStorage
+
+Message schema (JSON):
+  {
+    "case_id":      string   — UUID of the MTR case
+    "filename":     string   — original filename (for raw blob path resolution)
+    "suffix":       string   — Docling file suffix (e.g. ".pdf", ".docx")
+    "submitted_at": string   — ISO-8601 UTC submission timestamp
+  }
+
+Processing steps:
+  1. Update status.json → "processing"
+  2. Read raw file bytes from mtr/{case_id}/raw/{filename}
+  3. Run PDFProcessor.process_from_bytes(file_bytes, suffix)
+  4. Export markdown: document.export_to_markdown()
+  5. Run PDFProcessor.process_to_structured() → structured JSON
+  6. Write mtr/{case_id}/processed/{case_id}.md
+  7. Write mtr/{case_id}/processed/{case_id}_chunks.jsonl
+  8. Write mtr/{case_id}/processed/{case_id}_structured.json
+  9. Update status.json → "complete" with chunk_count and completed_at
+     On any exception: update status.json → "failed" with error message
+
+Blob paths produced (cactus-mtr container):
+  mtr/{case_id}/raw/{filename}                   — original file (written at intake)
+  mtr/{case_id}/status.json                      — status record (updated throughout)
+  mtr/{case_id}/processed/{case_id}.md           — Docling markdown output
+  mtr/{case_id}/processed/{case_id}_chunks.jsonl — one JSON object per line per chunk
+  mtr/{case_id}/processed/{case_id}_structured.json — full structured doc + chunk array
+
+Structured JSON schema:
+  {
+    "case_id":       string,
+    "filename":      string,
+    "processed_at":  string,       — ISO-8601 UTC
+    "doc_metadata":  {
+      "page_count":   integer,
+      "source_file":  string
+    },
+    "chunks": [
+      {
+        "chunk_index": integer,
+        "text":        string,
+        "meta":        object      — serialisable Docling chunk metadata
+      }, ...
+    ]
+  }
+
+======================================================================
 RUNNING THE FUNCTION APP LOCALLY
 ======================================================================
 
 Prerequisites:
-  1. Azurite running (provides local blob storage emulator)
-     - VS Code: start via "Azurite: Start Blob Service" command
-     - CLI: npx azurite --silent --location . --debug azurite.log
-     - Or: azurite --silent
+  1. Azurite running (provides local blob + queue storage emulator)
+     - VS Code: start via "Azurite: Start" command
+     - CLI: azurite --silent --skipApiVersionCheck --location .azurite
 
-  2. Blob container and data must exist in Azurite.
-     Upload blobs to the "cactus-whd" container:
-       cms_approved_providers.json  (root of container)
-       cms_process_crosswalk.json   (root of container)
-       cms-specs/cms_chunks.jsonl   (inside cms-specs/ virtual folder)
+  2. Storage containers and queues must exist in Azurite.
+
+     Blob container "cactus-whd" — CMS rubric data:
+       cms-rubric/cms_approved_providers.json
+       cms-rubric/cms_process_crosswalk.json
+       cms-rubric/cms-specs/cms_chunks.jsonl
+
+     Blob container "cactus-mtr" — MTR intake artifacts (auto-populated at runtime):
+       mtr/{case_id}/raw/{filename}
+       mtr/{case_id}/status.json
+       mtr/{case_id}/processed/{case_id}.md
+       mtr/{case_id}/processed/{case_id}_chunks.jsonl
+       mtr/{case_id}/processed/{case_id}_structured.json
+
+     Queue "mtr-intake-queue"         — intake trigger messages
+     Queue "mtr-intake-queue-poison"  — auto-created by Functions runtime
+
+     Provision containers and queues (if not already created):
+       python -c "
+       from azure.storage.blob import BlobServiceClient
+       from azure.storage.queue import QueueServiceClient
+       KEY = 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
+       BlobServiceClient.from_connection_string(f'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey={KEY};BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;').create_container('cactus-mtr')
+       qs = QueueServiceClient.from_connection_string(f'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey={KEY};QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;')
+       qs.create_queue('mtr-intake-queue'); qs.create_queue('mtr-intake-queue-poison')
+       "
 
   3. Python virtual environment with dependencies installed:
-       .venv\Scripts\pip install azure-functions azure-storage-blob
+       .venv\Scripts\pip install -r requirements.txt
+       (azure-functions, azure-storage-blob, azure-storage-queue, azure-core, docling)
 
   4. Azure Functions Core Tools installed:
        npm install -g azure-functions-core-tools@4
@@ -534,9 +861,12 @@ Start the function app:
 
 Confirm startup output shows:
   Functions:
-    http_cms_providers: [GET] http://localhost:7071/api/cms/providers
-    http_cms_crosswalk: [GET] http://localhost:7071/api/cms/crosswalk
-    http_cms_chunks:    [GET] http://localhost:7071/api/cms/chunks
+    http_cms_providers:    [GET]  http://localhost:7071/api/cms/providers
+    http_cms_crosswalk:    [GET]  http://localhost:7071/api/cms/crosswalk
+    http_cms_chunks:       [GET]  http://localhost:7071/api/cms/chunks
+    http_mtr_intake:       [POST] http://localhost:7071/api/mtr/intake
+    http_mtr_status:       [GET]  http://localhost:7071/api/mtr/{case_id}/status
+    mtr_intake_processor:  queueTrigger
 
 ======================================================================
 ERROR HANDLING REFERENCE
@@ -544,18 +874,24 @@ ERROR HANDLING REFERENCE
 
   HTTP STATUS  MEANING                          ACTION FOR CALLER
   -----------  -------------------------------- ----------------------------------------
-  200          Success                          Parse response body as JSON array
-  400          Bad request (missing param)      Fix query string before retrying
+  200          Success (GET)                    Parse response body as JSON
+  201          Created (POST /mtr/intake)       Parse case_id; begin polling status URL
+  202          Accepted — degraded              File stored; queue send failed; check status
+  400          Bad request (missing param)      Fix query string or form field before retrying
+  404          Not found                        case_id is unknown or invalid
+  415          Unsupported media type           File extension not in allowed set
   500          Unhandled server error           Log and alert; do not retry immediately
-  502          Blob storage unreachable         Check Azurite is running; retry with backoff
+  502          Blob/queue storage unreachable   Check Azurite is running; retry with backoff
 
   All error responses follow the schema: {"error": "<message string>"}
 
   Caller-side recommended pattern:
-    1. Check resp.status_code == 200 before parsing
-    2. For 400: surface the error.error message to the user
-    3. For 502: retry up to 3 times with 2s exponential backoff
-    4. For 500: log full response body to error tracking
+    1. POST /mtr/intake:   check status_code == 201; extract case_id from body
+    2. GET status:         poll until status == "complete" or "failed"
+    3. For 400/415:        surface the error.error message to the user
+    4. For 404:            case_id not recognised — check UUID is correct
+    5. For 502:            retry up to 3 times with 2s exponential backoff
+    6. For 500:            log full response body to error tracking
 
 ======================================================================
 CANONICAL SECTION LABELS (chunk.canonical_section)
