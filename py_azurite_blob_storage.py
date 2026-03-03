@@ -12,6 +12,7 @@ _AZURITE_DEFAULT = (
 
 BLOB_CONNECTION_STRING = os.environ.get("BLOB_CONNECTION_STRING", _AZURITE_DEFAULT)
 CONTAINER_NAME = "cactus-whd"
+MTR_CONTAINER_NAME = "cactus-mtr"
 
 
 class CactusWHDBlobStorage:
@@ -27,10 +28,14 @@ class CactusWHDBlobStorage:
         self,
         connection_string: str = BLOB_CONNECTION_STRING,
         container: str = CONTAINER_NAME,
+        container_mtr: str = MTR_CONTAINER_NAME,
+        blobEndpointMTR: str = f"http://127.0.0.1:10000/devstoreaccount1/{MTR_CONTAINER_NAME}",
     ):
         self.container = container
         self._service_client = BlobServiceClient.from_connection_string(connection_string)
         self._container_client = self._service_client.get_container_client(container)
+        self._container_client_mtr = self._service_client.get_container_client(container_mtr)  # for MTR evidence blobs
+        self.mtrBlobEndpoint = blobEndpointMTR
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -46,6 +51,21 @@ class CactusWHDBlobStorage:
         """Download a blob and parse it as JSON."""
         raw = self._read_blob_bytes(blob_name)
         return json.loads(raw.decode("utf-8"))
+    
+    def _write_blob_bytes(self, blob_path: str, blob_name: str, data: bytes, overwrite: bool = True) -> dict:
+        """Upload raw bytes to a blob."""
+        fileblob = os.path.join("mcr", f"{blob_path}", os.path.basename(blob_name))
+        try:
+            blob_client = self._container_client_mtr.get_blob_client(fileblob)
+            blob_client.upload_blob(data, overwrite=overwrite)
+            return {"success": True, "blob": f"{self.mtrBlobEndpoint}/{fileblob}"}
+        except Exception as e:
+            return {"success": False, "error": str(e), "blob": f"{self.mtrBlobEndpoint}/{fileblob}"}
+
+    def _write_blob_json(self, blob_path: str, blob_name: str, data: list | dict, overwrite: bool = True) -> dict:
+        """Serialize data as JSON and upload to a blob."""
+        raw = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+        return self._write_blob_bytes(blob_path, blob_name, raw, overwrite=overwrite)
 
     # ------------------------------------------------------------------
     # Named file methods
@@ -98,6 +118,89 @@ class CactusWHDBlobStorage:
         return results
 
     # ------------------------------------------------------------------
+    # MTR private helpers (operate on cactus-mtr container)
+    # ------------------------------------------------------------------
+
+    def _mtr_blob_path(self, job_id: str, *parts: str) -> str:
+        """Build a canonical blob path inside cactus-mtr: mcr/{job_id}/{parts}."""
+        return "/".join(["mcr", job_id, *parts])
+
+    def _read_mtr_blob_bytes(self, blob_path: str) -> bytes:
+        """Download a blob from cactus-mtr and return raw bytes."""
+        blob_client = self._container_client_mtr.get_blob_client(blob_path)
+        return blob_client.download_blob().readall()
+
+    def _upload_mtr_blob_bytes(self, blob_path: str, data: bytes, overwrite: bool = True) -> str:
+        """Upload raw bytes to cactus-mtr; returns the full blob URL."""
+        blob_client = self._container_client_mtr.get_blob_client(blob_path)
+        blob_client.upload_blob(data, overwrite=overwrite)
+        return f"{self.mtrBlobEndpoint}/{blob_path}"
+
+    # ------------------------------------------------------------------
+    # MTR public methods
+    # ------------------------------------------------------------------
+
+    def write_mtr_original(self, job_id: str, filename: str, data: bytes) -> str:
+        """
+        Store the raw uploaded MTR file.
+        Blob path: mcr/{job_id}/original/{filename}
+        Returns the blob URL.
+        """
+        path = self._mtr_blob_path(job_id, "original", filename)
+        return self._upload_mtr_blob_bytes(path, data)
+
+    def write_mtr_manifest(self, job_id: str, manifest: dict) -> str:
+        """
+        Write (or overwrite) the job manifest JSON.
+        Blob path: mcr/{job_id}/job.json
+        Returns the blob URL.
+        """
+        path = self._mtr_blob_path(job_id, "job.json")
+        raw = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
+        return self._upload_mtr_blob_bytes(path, raw)
+
+    def write_mtr_chunks_jsonl(self, job_id: str, lines: list[str]) -> str:
+        """
+        Write chunk records as JSONL (one JSON object per line).
+        Blob path: mcr/{job_id}/chunks.jsonl
+        Returns the blob URL.
+        """
+        path = self._mtr_blob_path(job_id, "chunks.jsonl")
+        raw = "\n".join(lines).encode("utf-8")
+        return self._upload_mtr_blob_bytes(path, raw)
+
+    def get_mtr_manifest(self, job_id: str) -> dict:
+        """
+        Read and parse the job manifest JSON.
+        Raises azure.core.exceptions.ResourceNotFoundError if job_id not found.
+        """
+        path = self._mtr_blob_path(job_id, "job.json")
+        raw = self._read_mtr_blob_bytes(path)
+        return json.loads(raw.decode("utf-8"))
+
+    def get_mtr_chunks(self, job_id: str) -> list[dict]:
+        """
+        Read and parse all chunk records from chunks.jsonl.
+        Returns list of parsed JSON objects; empty list if file is empty.
+        """
+        path = self._mtr_blob_path(job_id, "chunks.jsonl")
+        raw = self._read_mtr_blob_bytes(path)
+        results = []
+        for line in raw.decode("utf-8").splitlines():
+            line = line.strip()
+            if line:
+                results.append(json.loads(line))
+        return results
+
+    def get_mtr_original_bytes(self, job_id: str, filename: str) -> bytes:
+        """
+        Download the original uploaded MTR file as raw bytes.
+        Blob path: mcr/{job_id}/original/{filename}
+        """
+        path = self._mtr_blob_path(job_id, "original", filename)
+        return self._read_mtr_blob_bytes(path)
+
+    # ------------------------------------------------------------------
     # General blob utilities
     # ------------------------------------------------------------------
 
@@ -116,6 +219,7 @@ class CactusWHDBlobStorage:
     def read_blob_bytes(self, blob_name: str) -> bytes:
         """Generic method: download any blob by name and return raw bytes."""
         return self._read_blob_bytes(blob_name)
+    
 
 
 # ------------------------------------------------------------------
