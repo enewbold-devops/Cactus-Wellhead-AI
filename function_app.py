@@ -1,32 +1,20 @@
+import base64
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
 
-import azure.functions as func
-from azure.core.exceptions import AzureError
 
+from azure.core.exceptions import AzureError
 from py_azurite_blob_storage import CactusWHDBlobStorage
 from py_azurite_queue_storage import AzuriteQueueManager
-#from py_docling_chunks import PDFProcessor
 
-#, ALLOWED_SUFFIXES
+import azure.functions as func
 
 MTR_INTAKE_QUEUE = "mtr-intake-queue"
 
-try:
-    _store = CactusWHDBlobStorage()
-except Exception as _exc:
-    logging.warning("CactusWHDBlobStorage failed to initialise at module load: %s", _exc)
-    _store = None  # type: ignore
-
-try:
-    _queue = AzuriteQueueManager()
-except Exception as _exc:
-    logging.warning("AzuriteQueueManager failed to initialise at module load: %s", _exc)
-    _queue = None  # type: ignore
-    
-#_processor = PDFProcessor()
+_store = CactusWHDBlobStorage()
+_queue = AzuriteQueueManager()
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
@@ -208,7 +196,11 @@ def http_mtr_intake(req: func.HttpRequest) -> func.HttpResponse:
     }, ensure_ascii=False)
 
     try:
-        _queue.send_message(MTR_INTAKE_QUEUE, queue_message)
+        # host.json has messageEncoding=base64 — the Functions queue trigger
+        # will base64-decode before passing to mtr_intake_processor, so we
+        # must base64-encode when sending.
+        encoded_message = base64.b64encode(queue_message.encode("utf-8")).decode("ascii")
+        _queue.send_message(MTR_INTAKE_QUEUE, encoded_message)
         logging.info("[mtr/intake] enqueued case_id=%s filename=%s", case_id, filename)
     except Exception as exc:
         # Degraded mode: still return the case_id but flag the queue failure
@@ -224,7 +216,7 @@ def http_mtr_intake(req: func.HttpRequest) -> func.HttpResponse:
                            "Retry or contact support.",
                 "status_url": f"/api/mtr/{case_id}/status",
             },
-            status_code=202,
+            status_code=202
         )
 
     return _json_response(
@@ -311,7 +303,7 @@ def mtr_intake_processor(msg: func.QueueMessage) -> None:
         _update_status({"status": "failed", "error": f"Could not read raw file: {exc}"})
         return
 
-    # ── 3. Run Docling ───────────────────────────────────────────────────
+    # ── 3. Run Docling (single-pass) ──────────────────────────────────────
     try:
         from py_docling_chunks import PDFProcessor
         _processor = PDFProcessor()
@@ -319,10 +311,45 @@ def mtr_intake_processor(msg: func.QueueMessage) -> None:
         logging.info("[mtr_processor] running Docling on case_id=%s suffix=%s", case_id, suffix)
         document, raw_chunks = _processor.process_from_bytes(file_bytes, suffix=suffix)
         markdown: str = document.export_to_markdown()
-        structured: dict = _processor.process_to_structured(
-            file_bytes, case_id=case_id, filename=filename, suffix=suffix
-        )
-        chunks_list: list[dict] = structured["chunks"]
+
+        # Build structured output from the already-converted document
+        # (avoids calling process_to_structured which re-processes the file)
+        try:
+            page_count = len(document.pages) if hasattr(document, "pages") else 0
+        except Exception:
+            page_count = 0
+
+        chunks_list: list[dict] = []
+        for idx, chunk in enumerate(raw_chunks):
+            text = chunk.text if hasattr(chunk, "text") else ""
+            meta: dict = {}
+            if hasattr(chunk, "meta") and chunk.meta is not None:
+                try:
+                    raw_meta = chunk.meta
+                    if hasattr(raw_meta, "model_dump"):
+                        meta = {
+                            k: v for k, v in raw_meta.model_dump().items()
+                            if isinstance(v, (str, int, float, bool, list, dict, type(None)))
+                        }
+                    elif hasattr(raw_meta, "__dict__"):
+                        meta = {
+                            k: v for k, v in raw_meta.__dict__.items()
+                            if isinstance(v, (str, int, float, bool, list, dict, type(None)))
+                        }
+                except Exception:
+                    meta = {}
+            chunks_list.append({"chunk_index": idx, "text": text, "meta": meta})
+
+        structured: dict = {
+            "case_id": case_id,
+            "filename": filename,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "doc_metadata": {
+                "page_count": page_count,
+                "source_file": filename,
+            },
+            "chunks": chunks_list,
+        }
     except Exception as exc:
         logging.exception("[mtr_processor] Docling processing failed case_id=%s", case_id)
         _update_status({"status": "failed", "error": f"Document processing error: {exc}"})

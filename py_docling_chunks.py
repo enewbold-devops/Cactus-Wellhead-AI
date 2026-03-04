@@ -1,7 +1,13 @@
 import os
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+if "__main__" not in sys.modules: 
+    import types
+    sys.modules["__main__"] = types.ModuleType("__main__")
+
 from docling.document_converter import DocumentConverter
 from docling.chunking import HybridChunker
 

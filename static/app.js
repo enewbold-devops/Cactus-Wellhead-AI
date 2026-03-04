@@ -169,61 +169,35 @@ const Views = {
     _file: null,
 
     init() {
-      const dropZone   = $('drop-zone');
-      const fileInput  = $('file-input');
-      const clearBtn   = $('clear-file');
-      const submitBtn  = $('submit-btn');
-      const label      = dropZone.querySelector('.btn-outline');
+      var fileInput = document.getElementById('file-input');
+      var submitBtn = document.getElementById('submit-btn');
 
-      // Proxy label click to hidden input
-      label.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
-      dropZone.addEventListener('click', () => fileInput.click());
-      dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
-
-      fileInput.addEventListener('change', () => {
+      fileInput.addEventListener('change', function() {
         if (fileInput.files[0]) Views.upload._setFile(fileInput.files[0]);
+        else Views.upload._clearFile();
       });
 
-      // Drag events
-      ['dragenter', 'dragover'].forEach(ev =>
-        dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drag-over'); })
-      );
-      ['dragleave', 'drop'].forEach(ev =>
-        dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); })
-      );
-      dropZone.addEventListener('drop', e => {
-        const file = e.dataTransfer?.files[0];
-        if (file) Views.upload._setFile(file);
-      });
-
-      clearBtn.addEventListener('click', () => Views.upload._clearFile());
-      submitBtn.addEventListener('click', () => Views.upload._submit());
+      submitBtn.addEventListener('click', function() { Views.upload._submit(); });
     },
 
     _setFile(file) {
-      const errEl = $('upload-error');
-      // Validate extension client-side
+      var errEl = document.getElementById('upload-error');
       if (!ALLOWED_EXTENSIONS.has(ext(file.name))) {
-        errEl.textContent = `Unsupported file type "${ext(file.name)}". Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}`;
+        errEl.textContent = 'Unsupported file type "' + ext(file.name) + '". Allowed: ' + [...ALLOWED_EXTENSIONS].join(', ');
         errEl.classList.remove('hidden');
+        document.getElementById('file-input').value = '';
         return;
       }
       errEl.classList.add('hidden');
       this._file = file;
-      $('preview-name').textContent = file.name;
-      $('preview-size').textContent = formatBytes(file.size);
-      $('file-preview').classList.remove('hidden');
-      $('drop-zone').classList.add('hidden');
-      $('submit-btn').disabled = false;
+      document.getElementById('submit-btn').disabled = false;
     },
 
     _clearFile() {
       this._file = null;
-      $('file-input').value = '';
-      $('file-preview').classList.add('hidden');
-      $('drop-zone').classList.remove('hidden');
-      $('upload-error').classList.add('hidden');
-      $('submit-btn').disabled = true;
+      document.getElementById('file-input').value = '';
+      document.getElementById('upload-error').classList.add('hidden');
+      document.getElementById('submit-btn').disabled = true;
     },
 
     async _submit() {

@@ -1,9 +1,17 @@
 # Uncomment to enable Azure Monitor OpenTelemetry
 # Ref: aka.ms/functions-azure-monitor-python
 # azure-monitor-opentelemetry
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
 azure-functions
 azure-storage-blob>=12.19.0
 azure-storage-queue>=12.9.0
 azure-core>=1.30.0
 docling
+easyocr
+rapidocr_onnxruntime
+transformers==4.51.3
+torch 
+torchvision
+hf_xet
+huggingface_hub[hf_xet]
