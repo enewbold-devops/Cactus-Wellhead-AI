@@ -1,8 +1,9 @@
 # Cactus WHD — Developer & SOP Guide
 
-> **Generated:** 2026-03-02  
+> **Generated:** 2026-03-02  **Updated:** 2026-03-03
 > **Scope:** MTR Intake SOP · CMS Spec Validation · Approved Provider Correlation · Azure Functions HTTP API  
-> **Function App:** `function_app.py` · **Blob Module:** `blob_storage.py` · **Container:** `cactus-whd`
+> **Function App:** `function_app.py` · **Blob Module:** `py_azurite_blob_storage.py` · **Queue Module:** `py_azurite_queue_storage.py` · **Doc Processor:** `py_docling_chunks.py`  
+> **Containers:** `cactus-whd` (CMS rubric data) · `cactus-mtr` (MTR intake artifacts)
 
 ---
 
@@ -30,8 +31,11 @@
   - [5.2 Route: GET /api/cms/providers](#52-route-get-apicmsproviders)
   - [5.3 Route: GET /api/cms/crosswalk](#53-route-get-apicmscrosswalk)
   - [5.4 Route: GET /api/cms/chunks](#54-route-get-apicmschunks)
-  - [5.5 Cross-Route Validation Pattern](#55-cross-route-validation-pattern)
-  - [5.6 Error Handling Reference](#56-error-handling-reference)
+  - [5.5 Route: POST /api/mtr/intake](#55-route-post-apimtrintake)
+  - [5.6 Route: GET /api/mtr/{case_id}/status](#56-route-get-apimtrcase_idstatus)
+  - [5.7 Queue Trigger: mtr_intake_processor](#57-queue-trigger-mtr_intake_processor)
+  - [5.8 Cross-Route Validation Pattern](#58-cross-route-validation-pattern)
+  - [5.9 Error Handling Reference](#59-error-handling-reference)
 - [6. Local Development Setup](#6-local-development-setup)
   - [6.1 Azurite Troubleshooting](#61-azurite-troubleshooting)
 - [7. JSON Artifact Reference](#7-json-artifact-reference)
@@ -440,17 +444,22 @@ The following process codes have only one approved provider in the list:
 |---|---|
 | **Base URL (local)** | `http://localhost:7071/api` |
 | **Auth Level** | `ANONYMOUS` — no API key required |
-| **Methods** | `GET` only |
-| **Response format** | `application/json` — array `[]` on success, `{"error":"..."}` on failure |
+| **Methods** | `GET` (routes 1–3, 5) and `POST` (route 4) |
+| **Response format** | `application/json` — varies by route; `{"error":"..."}` on failure |
 | **Encoding** | UTF-8 |
 
 **Routes Summary:**
 
-| # | Route | Returns |
-|---|---|---|
-| 1 | `GET /api/cms/providers` | Full approved-providers list |
-| 2 | `GET /api/cms/crosswalk` | CMS-to-process-code crosswalk |
-| 3 | `GET /api/cms/chunks?cms_number=` | Filtered JSONL chunks by CMS spec |
+| # | Route | Method | Returns |
+|---|---|---|---|
+| 1 | `GET /api/cms/providers` | GET | Full approved-providers list |
+| 2 | `GET /api/cms/crosswalk` | GET | CMS-to-process-code crosswalk |
+| 3 | `GET /api/cms/chunks?cms_number=` | GET | Filtered JSONL chunks by CMS spec |
+| 4 | `POST /api/mtr/intake` | POST | Accepts MTR file; returns `case_id` (201) |
+| 5 | `GET /api/mtr/{case_id}/status` | GET | MTR case processing status |
+
+**Internal (non-HTTP):**  
+`mtr_intake_processor` — Azure Queue trigger on `mtr-intake-queue`. Runs Docling and writes processed artifacts to `cactus-mtr`.
 
 ---
 
@@ -783,7 +792,200 @@ curl -s "http://localhost:7071/api/cms/chunks?cms_number=CMS-999"
 
 ---
 
-### 5.5 Cross-Route Validation Pattern
+### 5.5 Route: POST /api/mtr/intake
+
+**Accepts** an MTR document upload via `multipart/form-data`. Stores the file immediately to the `cactus-mtr` blob container and enqueues a Docling processing job. Returns a `case_id` in `201 Created` without waiting for processing to complete.
+
+#### Request
+
+- **Content-Type:** `multipart/form-data`
+- **Field name:** `file` (required)
+- **Accepted extensions:** `.pdf`, `.docx`, `.xlsx`, `.jpg`, `.jpeg`, `.png`, `.tif`, `.tiff`
+
+#### Success Response Schema (`201 Created`)
+
+```jsonc
+{
+  "case_id":      "3fa85f64-5717-4562-b3fc-2c963f66afa6",  // UUID for this case
+  "status":       "queued",
+  "filename":     "heat_123456_mtr.pdf",
+  "submitted_at": "2026-03-03T16:00:00.000000+00:00",
+  "status_url":   "/api/mtr/3fa85f64-.../status"           // poll this URL
+}
+```
+
+#### Error Responses
+
+| Status | Trigger | Meaning |
+|---|---|---|
+| `400` | No `file` field | Missing required form field |
+| `400` | Zero-byte file | Uploaded file is empty |
+| `415` | Unsupported extension | File type not in allowed set |
+| `202` | Queue send failed | File stored; processing not enqueued |
+| `502` | Storage unreachable | Azurite/blob error |
+
+#### Blobs Written at Intake
+
+```
+cactus-mtr/
+  mtr/{case_id}/raw/{filename}    ← original file as received
+  mtr/{case_id}/status.json       ← initial status: "queued"
+```
+
+#### Python Example
+
+```python
+import requests
+
+BASE_URL = "http://localhost:7071/api"
+
+def submit_mtr(file_path: str) -> dict:
+    with open(file_path, "rb") as f:
+        resp = requests.post(
+            f"{BASE_URL}/mtr/intake",
+            files={"file": (file_path.split("/")[-1], f)},
+            timeout=60,
+        )
+    resp.raise_for_status()
+    return resp.json()
+
+result = submit_mtr("heat_123456_mtr.pdf")
+case_id = result["case_id"]
+print(f"Case: {case_id}  Poll: {BASE_URL}{result['status_url']}")
+```
+
+#### curl
+
+```bash
+curl -X POST http://localhost:7071/api/mtr/intake \
+  -F "file=@path/to/heat_123456_mtr.pdf"
+```
+
+---
+
+### 5.6 Route: GET /api/mtr/{case_id}/status
+
+**Returns** the current status record for an MTR case. Poll this endpoint after submitting via POST `/api/mtr/intake`.
+
+#### Status Lifecycle
+
+```
+queued → processing → complete
+                    → failed
+```
+
+#### Response Schema (`200 OK`)
+
+```jsonc
+{
+  "case_id":       "3fa85f64-...",
+  "status":        "complete",       // "queued" | "processing" | "complete" | "failed"
+  "filename":      "heat_123456_mtr.pdf",
+  "submitted_at":  "2026-03-03T16:00:00+00:00",
+  "completed_at":  "2026-03-03T16:00:47+00:00",  // null until done
+  "chunk_count":   14,                             // null until complete
+  "artifacts": {
+    "raw":             "mtr/{case_id}/raw/{filename}",
+    "markdown":        "mtr/{case_id}/processed/{case_id}.md",
+    "chunks_jsonl":    "mtr/{case_id}/processed/{case_id}_chunks.jsonl",
+    "structured_json": "mtr/{case_id}/processed/{case_id}_structured.json"
+  },
+  "error": null                       // error message string if status == "failed"
+}
+```
+
+#### Error Responses
+
+| Status | Meaning |
+|---|---|
+| `404` | `case_id` not found |
+| `502` | Storage unreachable |
+
+#### Python Example
+
+```python
+import requests, time
+
+BASE_URL = "http://localhost:7071/api"
+
+def wait_for_completion(case_id: str, poll_interval: int = 5, timeout: int = 300) -> dict:
+    url = f"{BASE_URL}/mtr/{case_id}/status"
+    elapsed = 0
+    while elapsed < timeout:
+        status = requests.get(url, timeout=30).json()
+        print(f"[{elapsed}s] status={status['status']}")
+        if status["status"] in ("complete", "failed"):
+            return status
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+    raise TimeoutError("Processing timed out")
+
+result = wait_for_completion("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+if result["status"] == "complete":
+    print(f"Chunks: {result['chunk_count']}")
+    print(f"Markdown blob: {result['artifacts']['markdown']}")
+```
+
+#### curl
+
+```bash
+curl -s "http://localhost:7071/api/mtr/3fa85f64-5717-4562-b3fc-2c963f66afa6/status" \
+  | python -m json.tool
+```
+
+---
+
+### 5.7 Queue Trigger: mtr_intake_processor
+
+This is an internal Azure Functions queue trigger — **not an HTTP endpoint**. It fires automatically when a message appears on `mtr-intake-queue`.
+
+#### Trigger Configuration
+
+| Property | Value |
+|---|---|
+| Queue name | `mtr-intake-queue` |
+| Poison queue | `mtr-intake-queue-poison` |
+| Connection setting | `AzureWebJobsStorage` |
+
+#### Processing Steps
+
+1. Deserialise queue message JSON (`case_id`, `filename`, `suffix`)
+2. Update `status.json` → `"processing"`
+3. Read raw bytes from `mtr/{case_id}/raw/{filename}`
+4. Call `PDFProcessor.process_from_bytes(file_bytes, suffix)` via Docling
+5. Export markdown: `document.export_to_markdown()`
+6. Call `PDFProcessor.process_to_structured()` to build structured JSON
+7. Write all three processed artifacts to `cactus-mtr`
+8. Update `status.json` → `"complete"` with `chunk_count` and `completed_at`
+9. On any exception: update `status.json` → `"failed"` with error message
+
+#### Blobs Written at Process Time
+
+```
+cactus-mtr/
+  mtr/{case_id}/processed/{case_id}.md                  ← Docling markdown
+  mtr/{case_id}/processed/{case_id}_chunks.jsonl         ← one JSON object per chunk
+  mtr/{case_id}/processed/{case_id}_structured.json      ← doc metadata + chunk array
+```
+
+#### Structured JSON Schema
+
+```jsonc
+{
+  "case_id":      "3fa85f64-...",
+  "filename":     "heat_123456_mtr.pdf",
+  "processed_at": "2026-03-03T16:00:47+00:00",
+  "doc_metadata": { "page_count": 4, "source_file": "heat_123456_mtr.pdf" },
+  "chunks": [
+    { "chunk_index": 0, "text": "...", "meta": { ... } },
+    ...
+  ]
+}
+```
+
+---
+
+### 5.8 Cross-Route Validation Pattern
 
 This pattern combines all three endpoints to fully validate a provider against CMS rules — the core logic for the MTR intake engine.
 
@@ -854,14 +1056,18 @@ print(validate_mtr_provider("CMS-305", "CCS-612", "Houston Plating & Coatings"))
 
 ---
 
-### 5.6 Error Handling Reference
+### 5.9 Error Handling Reference
 
 | HTTP Status | Meaning | Caller Action |
 |---|---|---|
-| `200` | Success | Parse body as JSON array |
-| `400` | Missing required parameter | Fix query string before retrying |
+| `200` | Success (GET) | Parse body as JSON |
+| `201` | Created (POST intake) | Extract `case_id`; start polling `status_url` |
+| `202` | Accepted — degraded | File stored; queue send failed; check status |
+| `400` | Missing required parameter or empty file | Fix request before retrying |
+| `404` | Resource not found (`case_id` unknown) | Verify UUID is correct |
+| `415` | Unsupported file type | Use an allowed extension |
 | `500` | Unhandled server error | Log; do not retry immediately |
-| `502` | Blob storage unreachable | Check Azurite; retry with exponential backoff |
+| `502` | Blob/queue storage unreachable | Check Azurite; retry with exponential backoff |
 
 **All error responses:**
 
@@ -893,26 +1099,61 @@ def get_with_retry(url: str, params: dict = None, retries: int = 3) -> list | di
 
 | Requirement | Install Command |
 |---|---|
-| **Azurite** (blob emulator) | `npm install -g azurite@latest` |
+| **Azurite** (blob + queue emulator) | `npm install -g azurite@latest` |
 | **Azure Functions Core Tools v4** | `npm install -g azure-functions-core-tools@4` |
-| **Python venv** | `.venv\Scripts\pip install azure-functions azure-storage-blob` |
+| **Python venv** | `.venv\Scripts\pip install -r requirements.txt` |
 
 ### Blob Container Setup
 
-Upload the following blobs to the `cactus-whd` container in Azurite:
+**Container `cactus-whd`** — CMS rubric data (upload manually before first run):
 
 ```
 cactus-whd/
-├── cms_approved_providers.json       ← root of container
-├── cms_process_crosswalk.json        ← root of container
-└── cms-specs/
-    └── cms_chunks.jsonl              ← virtual subfolder
+├── cms-rubric/
+│   ├── cms_approved_providers.json
+│   ├── cms_process_crosswalk.json
+│   └── cms-specs/
+│       └── cms_chunks.jsonl
+```
+
+**Container `cactus-mtr`** — MTR intake artifacts (auto-populated at runtime):
+
+```
+cactus-mtr/
+└── mtr/{case_id}/
+    ├── raw/{filename}                    ← original file upload
+    ├── status.json                       ← case status record
+    └── processed/
+        ├── {case_id}.md                  ← Docling markdown
+        ├── {case_id}_chunks.jsonl        ← one record per chunk
+        └── {case_id}_structured.json     ← doc metadata + chunk array
+```
+
+**Queue `mtr-intake-queue`** — must exist before starting the function app.
+
+Provision containers and queues in Azurite:
+
+```python
+from azure.storage.blob import BlobServiceClient
+from azure.storage.queue import QueueServiceClient
+
+KEY = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
+blob_cs = f"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey={KEY};BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+queue_cs = f"DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey={KEY};QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+
+bsvc = BlobServiceClient.from_connection_string(blob_cs)
+bsvc.create_container("cactus-whd")   # if not exists
+bsvc.create_container("cactus-mtr")   # if not exists
+
+qsvc = QueueServiceClient.from_connection_string(queue_cs)
+qsvc.create_queue("mtr-intake-queue")
+qsvc.create_queue("mtr-intake-queue-poison")
 ```
 
 ### Starting the Stack
 
 ```powershell
-# 1. Start Azurite
+# 1. Start Azurite (blob + queue + table)
 azurite --silent --skipApiVersionCheck --location .azurite --debug .azurite\debug.log
 
 # 2. Activate venv
@@ -926,9 +1167,12 @@ func start
 
 ```
 Functions:
-  http_cms_providers: [GET] http://localhost:7071/api/cms/providers
-  http_cms_crosswalk: [GET] http://localhost:7071/api/cms/crosswalk
-  http_cms_chunks:    [GET] http://localhost:7071/api/cms/chunks
+  http_cms_providers:    [GET]  http://localhost:7071/api/cms/providers
+  http_cms_crosswalk:    [GET]  http://localhost:7071/api/cms/crosswalk
+  http_cms_chunks:       [GET]  http://localhost:7071/api/cms/chunks
+  http_mtr_intake:       [POST] http://localhost:7071/api/mtr/intake
+  http_mtr_status:       [GET]  http://localhost:7071/api/mtr/{case_id}/status
+  mtr_intake_processor:  queueTrigger
 ```
 
 ### Settings (`local.settings.json`)
@@ -937,12 +1181,14 @@ Functions:
 {
   "IsEncrypted": false,
   "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;",
     "FUNCTIONS_WORKER_RUNTIME": "python",
     "BLOB_CONNECTION_STRING": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
   }
 }
 ```
+
+> **Note:** `AzureWebJobsStorage` must be a full connection string (not `UseDevelopmentStorage=true`) when Azurite runs with a custom account key. The queue trigger requires this value to authenticate with Azurite's queue endpoint.
 
 ---
 
@@ -1004,11 +1250,23 @@ for b in svc.get_container_client("cactus-whd").list_blobs():
 
 ## 7. JSON Artifact Reference
 
-| File | Location | Purpose |
+### `cactus-whd` container — CMS rubric data
+
+| File | Blob Path | Purpose |
 |---|---|---|
-| `cms_approved_providers.json` | `cactus-whd/` (blob root) | Approved sub-supplier + site + process code registry |
-| `cms_process_crosswalk.json` | `cactus-whd/` (blob root) | CMS-to-process-code rule matrix |
-| `cms_chunks.jsonl` | `cactus-whd/cms-specs/` | Parsed CMS spec PDF chunks (JSONL, one record per line) |
+| `cms_approved_providers.json` | `cms-rubric/` | Approved sub-supplier + site + process code registry |
+| `cms_process_crosswalk.json` | `cms-rubric/` | CMS-to-process-code rule matrix |
+| `cms_chunks.jsonl` | `cms-rubric/cms-specs/` | Parsed CMS spec PDF chunks (JSONL, one record per line) |
+
+### `cactus-mtr` container — MTR intake artifacts
+
+| File | Blob Path | Written By | Purpose |
+|---|---|---|---|
+| `{filename}` | `mtr/{case_id}/raw/` | `http_mtr_intake` (POST) | Original file as received |
+| `status.json` | `mtr/{case_id}/` | Both functions | Case status record (updated throughout) |
+| `{case_id}.md` | `mtr/{case_id}/processed/` | `mtr_intake_processor` | Docling markdown output |
+| `{case_id}_chunks.jsonl` | `mtr/{case_id}/processed/` | `mtr_intake_processor` | One JSON object per chunk |
+| `{case_id}_structured.json` | `mtr/{case_id}/processed/` | `mtr_intake_processor` | Doc metadata + chunk array |
 
 ### crosswalk entry structure
 
@@ -1034,4 +1292,4 @@ for b in svc.get_container_client("cactus-whd").list_blobs():
 
 ---
 
-*End of Guide — Cactus WHD Developer & SOP Reference · 2026-03-02*
+*End of Guide — Cactus WHD Developer & SOP Reference · Updated 2026-03-03*
