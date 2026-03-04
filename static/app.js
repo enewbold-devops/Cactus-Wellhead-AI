@@ -310,28 +310,29 @@ const Views = {
     },
 
     _updateStepper(statusKey) {
-      // Map status to which steps are done vs active
-      const ORDER = ['received', 'queued', 'processing', 'complete'];
+      // Full ordered step list — failed is terminal, sits at end
+      const ORDER = ['received', 'queued', 'processing', 'complete', 'failed'];
       const isFailed = statusKey === 'failed' || statusKey === 'queue_error';
 
-      // Determine index of active step
-      let activeIdx = ORDER.indexOf(statusKey);
-      if (isFailed) activeIdx = ORDER.indexOf('processing'); // highlight processing as failed
+      // Resolve which step should be active
+      const activeStep = isFailed ? 'failed' : statusKey;
+      const activeIdx  = ORDER.indexOf(activeStep);
 
       document.querySelectorAll('.step').forEach(el => {
         const step = el.dataset.step;
         el.classList.remove('done', 'active');
 
-        if (isFailed && step === 'failed') {
-          el.classList.add('active');
+        const idx = ORDER.indexOf(step);
+
+        // 'complete' and 'failed' are terminal endpoints — never mark as done
+        if (step === 'complete' || step === 'failed') {
+          if (idx === activeIdx) el.classList.add('active');
           return;
         }
-        if (!isFailed && step === 'failed') return; // never highlight failed if not failed
 
-        const idx = ORDER.indexOf(step);
         if (idx < activeIdx) {
           el.classList.add('done');
-        } else if (idx === activeIdx && !isFailed) {
+        } else if (idx === activeIdx) {
           el.classList.add('active');
         }
       });
