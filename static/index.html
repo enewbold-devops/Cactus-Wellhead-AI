@@ -70,9 +70,10 @@
           <ol class="stepper" id="stepper">
             <li class="step" data-step="received"><span class="step-dot"></span><span class="step-label">Received</span></li>
             <li class="step" data-step="queued"><span class="step-dot"></span><span class="step-label">Queued</span></li>
-            <li class="step" data-step="processing"><span class="step-dot"></span><span class="step-label">Processing</span></li>
-            <li class="step" data-step="complete"><span class="step-dot"></span><span class="step-label">Complete</span></li>
-            <li class="step" data-step="failed"><span class="step-dot"></span><span class="step-label">Failed</span></li>
+            <li class="step" data-step="processing"><span class="step-dot"></span><span class="step-label">Extracting</span></li>
+            <li class="step" data-step="vectorizing"><span class="step-dot"></span><span class="step-label">Vectorizing</span></li>
+            <li class="step" data-step="validated"><span class="step-dot"></span><span class="step-label">Validated</span></li>
+            <li class="step step--error" data-step="failed"><span class="step-dot"></span><span class="step-label">Error</span></li>
           </ol>
         </div>
 
@@ -86,6 +87,22 @@
               <thead><tr><th>Artifact</th><th>Blob Path</th></tr></thead>
               <tbody id="artifacts-tbody"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Validation Report (shown when status ≥ validation_ready) -->
+        <div id="validation-panel" class="hidden">
+          <div class="card">
+            <h3>Gate Results</h3>
+            <div id="gate-results-grid" class="gate-grid"></div>
+          </div>
+          <div class="card">
+            <h3>Validation Detail</h3>
+            <div id="validation-detail"></div>
+          </div>
+          <div class="card">
+            <h3>Chunk Classifications</h3>
+            <div id="chunk-class-grid" class="chunk-class-grid"></div>
           </div>
         </div>
 

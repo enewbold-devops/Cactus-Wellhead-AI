@@ -1,18 +1,21 @@
 Cactus WHD — Azure Functions HTTP API Guide
 Document Type: Developer Reference
-Generated: 2026-03-02  Updated: 2026-03-03
+Generated: 2026-03-02  Updated: 2026-03-05
 Function App: function_app.py
 Blob Storage Module: py_azurite_blob_storage.py
 Queue Manager: py_azurite_queue_storage.py
 Document Processor: py_docling_chunks.py
+Vector Store Module: py_vectodb.py
 Containers: cactus-whd (CMS rubric data)  |  cactus-mtr (MTR intake artifacts)
+Vector Store: vectordb_lancedb/ (LanceDB embedded — Azure OpenAI text-embedding-3-large, 3072 dims)
 
 ======================================================================
 OVERVIEW
 ======================================================================
 
-The Cactus WHD Azure Function App exposes five HTTP endpoints backed by
-Azure Blob Storage and Azure Queue Storage (or local Azurite emulators).
+The Cactus WHD Azure Function App exposes six HTTP endpoints backed by
+Azure Blob Storage, Azure Queue Storage, Azure OpenAI embeddings, and a local
+LanceDB vector store (or Azurite emulators for storage in local dev).
 
   Base URL (local):  http://localhost:7071/api
   Auth level:        ANONYMOUS (no API key required)
@@ -22,26 +25,32 @@ All responses are:
   Encoding:     UTF-8
   Body format:  JSON array [] or object on success, JSON object {"error":"..."} on failure
 
-HTTP methods supported: GET (routes 1-3, 5) and POST (route 4).
+HTTP methods supported: GET (routes 1-3, 5-6) and POST (route 4).
 
-Additionally, one internal Azure Queue trigger function (mtr_intake_processor)
-handles asynchronous Docling document processing triggered by the mtr-intake-queue.
+Two internal Azure Queue trigger functions handle asynchronous processing:
+  mtr_intake_processor    — Docling PDF extraction; triggered by mtr-intake-queue
+  mtr_vectorize_processor — Azure OpenAI embeddings + LanceDB write + gate validation;
+                            triggered by mtr-vectorize-queue
 
 ======================================================================
 ROUTES SUMMARY
 ======================================================================
 
-  #  Route                             Method  Returns
-  -  --------------------------------  ------  ----------------------------------------
-  1  GET /api/cms/providers            GET     Full approved-providers list (JSON array)
-  2  GET /api/cms/crosswalk            GET     CMS-to-process-code crosswalk (JSON array)
-  3  GET /api/cms/chunks               GET     Filtered JSONL chunks by CMS number (JSON array)
-  4  POST /api/mtr/intake              POST    Accepts MTR file upload; returns case_id (201)
-  5  GET /api/mtr/{case_id}/status     GET     MTR case processing status record (JSON object)
+  #  Route                                  Method  Returns
+  -  -------------------------------------  ------  ----------------------------------------
+  1  GET /api/cms/providers                 GET     Full approved-providers list (JSON array)
+  2  GET /api/cms/crosswalk                 GET     CMS-to-process-code crosswalk (JSON array)
+  3  GET /api/cms/chunks                    GET     Filtered JSONL chunks by CMS number (JSON array)
+  4  POST /api/mtr/intake                   POST    Accepts MTR file upload; returns case_id (201)
+  5  GET /api/mtr/{case_id}/status          GET     MTR case processing status record (JSON object)
+  6  GET /api/mtr/{case_id}/validation      GET     Gate results + validation report (JSON object)
 
-  Internal trigger (not HTTP):
-     mtr_intake_processor — Azure Queue trigger on mtr-intake-queue
-                            Runs Docling, writes processed artifacts to cactus-mtr blob container
+  Internal triggers (not HTTP):
+     mtr_intake_processor    — Queue trigger on mtr-intake-queue
+                               Runs Docling, writes processed artifacts, enqueues vectorize job
+     mtr_vectorize_processor — Queue trigger on mtr-vectorize-queue
+                               Generates Azure OpenAI embeddings, writes to LanceDB,
+                               runs Gate 0/1 validation, writes validation.json to blob
 
 ======================================================================
 ROUTE 1 — GET /api/cms/providers
@@ -677,10 +686,17 @@ Description:
   Returns the current processing status record for a given MTR case.
   The case_id is the UUID returned by POST /api/mtr/intake.
 
-  Status transitions:
-    queued → processing → complete
-                        → failed
+  Status transitions (full lifecycle):
+
+    queued → processing → complete → vectorizing → validation_ready
+                                                 → under_review      (review_flags present)
+                                                 → vectorize_failed  (embedding/LanceDB error)
+                        → failed        (Docling processing error)
                         → queue_error   (file stored, queue send failed)
+
+  Poll until one of these terminal statuses is reached:
+    validation_ready  accepted  accepted_with_conditions
+    rejected  deviation_required  under_review  failed  vectorize_failed  queue_error
 
 URL:
   http://localhost:7071/api/mtr/{case_id}/status
@@ -697,19 +713,24 @@ Success Response:
 
   Status record schema:
     {
-      "case_id":       string        — UUID for the MTR validation case
-      "status":        string        — "queued" | "processing" | "complete" | "failed"
-      "filename":      string        — original filename
-      "submitted_at":  string        — ISO-8601 UTC submission timestamp
-      "completed_at":  string|null   — ISO-8601 UTC completion timestamp (null if not done)
-      "chunk_count":   integer|null  — number of Docling chunks produced (complete only)
+      "case_id":          string        — UUID for the MTR validation case
+      "status":           string        — see status lifecycle above
+      "filename":         string        — original filename
+      "submitted_at":     string        — ISO-8601 UTC submission timestamp
+      "completed_at":     string|null   — ISO-8601 UTC Docling completion timestamp
+      "vectorized_at":    string|null   — ISO-8601 UTC vectorization completion timestamp
+      "chunk_count":      integer|null  — number of Docling chunks produced
+      "resolved_cms_set": string[]|null — CMS specs resolved for this case (e.g. ["CMS-002","CMS-107"])
+      "lancedb_table":    string|null   — LanceDB table name for this case
+      "review_flags":     string[]|null — list of flag strings requiring human review
       "artifacts": {
-        "raw":             string    — blob path: mtr/{case_id}/raw/{filename}
-        "markdown":        string    — blob path: mtr/{case_id}/processed/{case_id}.md
-        "chunks_jsonl":    string    — blob path: mtr/{case_id}/processed/{case_id}_chunks.jsonl
-        "structured_json": string    — blob path: mtr/{case_id}/processed/{case_id}_structured.json
+        "raw":             string        — blob path: mtr/{case_id}/raw/{filename}
+        "markdown":        string        — blob path: mtr/{case_id}/processed/{case_id}.md
+        "chunks_jsonl":    string        — blob path: mtr/{case_id}/processed/{case_id}_chunks.jsonl
+        "structured_json": string        — blob path: mtr/{case_id}/processed/{case_id}_structured.json
+        "validation_json": string|null   — blob path: mtr/{case_id}/processed/{case_id}_validation.json
       },
-      "error":         string|null   — error message if status is "failed", else null
+      "error":            string|null   — error message if status is "failed" or "vectorize_failed"
     }
 
 Error Responses:
@@ -750,11 +771,170 @@ Example — Python (requests)
       resp.raise_for_status()
       return resp.json()
 
-  status = get_mtr_status("3fa85f64-5717-4562-b3fc-2c963f66afa6")
-  print(f"Status: {status['status']}")
-  if status["status"] == "complete":
-      print(f"Chunks produced: {status['chunk_count']}")
-      print(f"Markdown path: {status['artifacts']['markdown']}")
+  TERMINAL = {"validation_ready", "under_review", "accepted", "accepted_with_conditions",
+              "rejected", "deviation_required", "failed", "vectorize_failed", "queue_error"}
+
+  def poll_to_terminal(case_id: str, interval: int = 5, timeout: int = 600) -> dict:
+      url = f"{BASE_URL}/mtr/{case_id}/status"
+      elapsed = 0
+      while elapsed < timeout:
+          status = requests.get(url, timeout=30).json()
+          print(f"  [{elapsed}s] {status['status']}")
+          if status["status"] in TERMINAL:
+              return status
+          time.sleep(interval)
+          elapsed += interval
+      raise TimeoutError("Pipeline did not reach terminal status")
+
+  result = poll_to_terminal("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+  print(f"Final status: {result['status']}")
+  if result["status"] == "validation_ready":
+      print(f"CMS set: {result.get('resolved_cms_set')}")
+      print(f"LanceDB table: {result.get('lancedb_table')}")
+      print(f"Validation: {result['artifacts'].get('validation_json')}")
+
+======================================================================
+ROUTE 6 — GET /api/mtr/{case_id}/validation
+======================================================================
+
+Description:
+  Returns the gate results and chunk classification report produced by
+  mtr_vectorize_processor. Only available after the case reaches status
+  "validation_ready", "under_review", or later disposition states.
+
+  Returns 404 with an informative message if vectorization has not yet
+  completed for the given case.
+
+URL:
+  http://localhost:7071/api/mtr/{case_id}/validation
+
+Method: GET
+
+Path Parameters:
+  NAME       TYPE    REQUIRED  DESCRIPTION
+  case_id    string  YES       UUID returned by POST /api/mtr/intake
+
+Success Response:
+  HTTP 200 OK
+  Content-Type: application/json
+
+  Body schema (validation.json blob contents):
+    {
+      "case_id":          string         — UUID for the MTR validation case
+      "validated_at":     string         — ISO-8601 UTC timestamp of vectorization
+      "resolved_cms_set": string[]       — CMS specs identified in document
+      "gates": {
+        "gate_0": {
+          "status":         "pass" | "fail" | "pending",
+          "missing_fields": string[]     — fields absent from MTR (if fail)
+        },
+        "gate_1": {
+          "status":         "pass" | "fail" | "pending",
+          "heat_number":    string | null,
+          "grade_resolved": string | null,
+          "po_reference":   string | null
+        },
+        "gate_2": { "status": "pending" },  — reserved (CTQ limit check, future)
+        "gate_3": { "status": "pending" },  — reserved (provider correlation, future)
+        "gate_4": { "status": "open" }      — reserved (record lock, human disposition)
+      },
+      "chunk_classifications": [
+        {
+          "chunk_index":    integer,
+          "semantic_class": string,       — "chemistry" | "charpy" | "hardness" |
+                                            "mechanical" | "heat_treatment" | "ndt" |
+                                            "identity" | "other"
+          "confidence":     "high" | "medium" | "low",
+          "needs_review":   boolean,
+          "extracted_fields": object      — key-value pairs extracted for this class
+        }, ...
+      ],
+      "review_flags":     string[]        — human-readable flags requiring QE input
+    }
+
+Error Responses:
+  404 {"error": "Validation report not yet available for case <id>. ..."}
+             — case exists but vectorization has not completed
+  404 {"error": "Case not found: <case_id>"}
+             — case_id is unknown
+  502 {"error": "Blob storage error: <detail>"}
+  500 {"error": "Unexpected error: <detail>"}
+
+---
+Example — Python (requests)
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def get_mtr_validation(case_id: str) -> dict:
+      resp = requests.get(f"{BASE_URL}/mtr/{case_id}/validation", timeout=30)
+      if resp.status_code == 404:
+          raise ValueError(resp.json()["error"])
+      resp.raise_for_status()
+      return resp.json()
+
+  val = get_mtr_validation("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+  print(f"CMS specs resolved: {val['resolved_cms_set']}")
+  print(f"Gate 0: {val['gates']['gate_0']['status']}")
+  print(f"Gate 1: {val['gates']['gate_1']['status']}")
+
+  # Count chunk classes
+  from collections import Counter
+  class_counts = Counter(c["semantic_class"] for c in val["chunk_classifications"])
+  for cls, n in sorted(class_counts.items(), key=lambda x: -x[1]):
+      print(f"  {cls}: {n}")
+
+  # Surface review flags
+  for flag in val.get("review_flags", []):
+      print(f"  ⚠ {flag}")
+
+---
+Example — JavaScript (fetch)
+---
+
+  const BASE_URL = "http://localhost:7071/api";
+
+  async function getMtrValidation(caseId) {
+    const resp = await fetch(`${BASE_URL}/mtr/${caseId}/validation`);
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error);
+    }
+    return resp.json();
+  }
+
+  const val = await getMtrValidation("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+  console.log("CMS set:", val.resolved_cms_set);
+  console.log("Gate 0:", val.gates.gate_0.status);
+  console.log("Gate 1:", val.gates.gate_1);
+
+  // Aggregate chunk classes
+  const classCounts = {};
+  for (const c of val.chunk_classifications) {
+    classCounts[c.semantic_class] = (classCounts[c.semantic_class] || 0) + 1;
+  }
+  console.log("Chunk classes:", classCounts);
+
+---
+Example — curl
+---
+
+  CASE_ID="3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  curl -s "http://localhost:7071/api/mtr/${CASE_ID}/validation" | python -m json.tool
+
+  # Gate summary only
+  curl -s "http://localhost:7071/api/mtr/${CASE_ID}/validation" | python -c "
+  import sys, json
+  v = json.load(sys.stdin)
+  for gate, result in v['gates'].items():
+      print(f'{gate}: {result[\"status\"]}')
+  "
+
+  # Test not-yet-vectorized case (expect 404 with informative message)
+  curl -s "http://localhost:7071/api/mtr/${CASE_ID}/validation"
+  # -> {"error": "Validation report not yet available for case <id>. Status is currently: complete"}
 
 ======================================================================
 INTERNAL — QUEUE TRIGGER: mtr_intake_processor
@@ -785,7 +965,9 @@ Processing steps:
   7. Write mtr/{case_id}/processed/{case_id}_chunks.jsonl
   8. Write mtr/{case_id}/processed/{case_id}_structured.json
   9. Update status.json → "complete" with chunk_count and completed_at
-     On any exception: update status.json → "failed" with error message
+  10. Enqueue message on mtr-vectorize-queue to trigger AI vectorization
+      (failure to enqueue is non-fatal — logs a warning; status remains "complete")
+     On any exception in steps 1-9: update status.json → "failed" with error message
 
 Blob paths produced (cactus-mtr container):
   mtr/{case_id}/raw/{filename}                   — original file (written at intake)
@@ -810,6 +992,92 @@ Structured JSON schema:
         "meta":        object      — serialisable Docling chunk metadata
       }, ...
     ]
+  }
+
+======================================================================
+INTERNAL — QUEUE TRIGGER: mtr_vectorize_processor
+======================================================================
+
+This function fires automatically when mtr_intake_processor enqueues a message
+on mtr-vectorize-queue after successful Docling extraction.
+
+Queue name: mtr-vectorize-queue
+Poison queue: mtr-vectorize-queue-poison (auto-created by Functions runtime)
+Connection: AzureWebJobsStorage
+batchSize: 1  |  visibilityTimeout: 300s  |  maxDequeueCount: 5
+
+Message schema (JSON):
+  {
+    "case_id":      string   — UUID of the MTR case
+    "filename":     string   — original filename
+    "submitted_at": string   — ISO-8601 UTC submission timestamp
+  }
+
+Processing steps:
+  1.  Parse queue message — extract case_id
+  2.  Update status.json → "vectorizing"
+  3.  Load structured JSON from mtr/{case_id}/processed/{case_id}_structured.json
+  4.  Resolve CMS spec set (regex on chunk text against known CMS identifiers)
+  5.  Classify chunks by semantic class (chemistry, charpy, hardness, mechanical,
+      heat_treatment, ndt, identity, other) using regex pattern matching
+  6.  Extract structured fields per chunk (element values, test results, heat numbers)
+  7.  Build text_for_embed string per chunk (section + extracted fields + raw text)
+  8.  Batch embed all chunks via Azure OpenAI text-embedding-3-large (3072 dims)
+      Batch size: 16 chunks per API call
+  9.  Write chunk rows to LanceDB per-case table (threading.Lock + FileLock mutex)
+  10. Gate 0 check — completeness: verify heat#, PO#, chemistry, mechanicals, hardness present
+  11. Gate 1 check — identity: confirm heat number matches PO reference, grade resolved
+  12. Write validation.json to mtr/{case_id}/processed/{case_id}_validation.json
+      Update status.json → "validation_ready" | "under_review" (if review_flags present)
+     On any exception: update status.json → "vectorize_failed" with error message
+
+Blob paths produced (cactus-mtr container):
+  mtr/{case_id}/processed/{case_id}_validation.json — gate results + chunk classifications
+
+Azure OpenAI configuration:
+  Model:      text-embedding-3-large
+  Dimensions: 3072 (full, not truncated)
+  Env vars:   AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_EMBED_DEPLOYMENT
+  API version: 2024-02-01
+
+LanceDB configuration:
+  Path:       LANCEDB_PATH env var (default: vectordb_lancedb/ in workspace root)
+  Tables:     cms_spec_chunks  — CMS specification knowledge base (seeded separately)
+              mtr_{case_id_underscored}  — per-case embedded chunk table
+              mtr_case_registry          — flat registry of all case metadata
+  Concurrency: threading.Lock (in-process) + FileLock on .lancedb_write.lock sentinel
+
+Validation JSON schema:
+  {
+    "case_id":          string,
+    "validated_at":     string,      — ISO-8601 UTC
+    "resolved_cms_set": string[],   — e.g. ["CMS-002", "CMS-107"]
+    "gates": {
+      "gate_0": {
+        "status":         "pass" | "fail" | "pending",
+        "missing_fields": string[]   — populated if status is "fail"
+      },
+      "gate_1": {
+        "status":         "pass" | "fail" | "pending",
+        "heat_number":    string | null,
+        "grade_resolved": string | null,
+        "po_reference":   string | null
+      },
+      "gate_2": { "status": "pending" },   — CTQ chemical/mechanical limit check (future)
+      "gate_3": { "status": "pending" },   — provider correlation check (future)
+      "gate_4": { "status": "open" }       — record lock (requires human disposition)
+    },
+    "chunk_classifications": [
+      {
+        "chunk_index":    integer,
+        "semantic_class": string,     — "chemistry" | "charpy" | "hardness" | "mechanical"
+                                        | "heat_treatment" | "ndt" | "identity" | "other"
+        "confidence":     "high" | "medium" | "low",
+        "needs_review":   boolean,
+        "extracted_fields": object    — key-value pairs extracted for this class
+      }, ...
+    ],
+    "review_flags":     string[]      — human-readable flags requiring QE review
   }
 
 ======================================================================
@@ -846,13 +1114,32 @@ Prerequisites:
        BlobServiceClient.from_connection_string(f'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey={KEY};BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;').create_container('cactus-mtr')
        qs = QueueServiceClient.from_connection_string(f'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey={KEY};QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;')
        qs.create_queue('mtr-intake-queue'); qs.create_queue('mtr-intake-queue-poison')
+       qs.create_queue('mtr-vectorize-queue'); qs.create_queue('mtr-vectorize-queue-poison')
        "
+
+     LanceDB store directory (auto-created on first write, but may be pre-created):
+       mkdir vectordb_lancedb
 
   3. Python virtual environment with dependencies installed:
        .venv\Scripts\pip install -r requirements.txt
-       (azure-functions, azure-storage-blob, azure-storage-queue, azure-core, docling)
 
-  4. Azure Functions Core Tools installed:
+     Core packages:
+       azure-functions  azure-storage-blob  azure-storage-queue  azure-core  docling
+
+     Vectorization packages (added in v2 pipeline):
+       lancedb>=0.20.0   — embedded vector store
+       pyarrow>=17.0.0   — columnar schema backend for LanceDB
+       openai>=1.0.0     — Azure OpenAI embeddings SDK
+       filelock>=3.13.0  — cross-process write mutex
+
+  4. Azure OpenAI resource with text-embedding-3-large deployment.
+     Set in local.settings.json:
+       AZURE_OPENAI_ENDPOINT          — your Azure OpenAI resource URL
+       AZURE_OPENAI_API_KEY           — your Azure OpenAI API key
+       AZURE_OPENAI_EMBED_DEPLOYMENT  — deployment name (default: "text-embedding-3-large")
+       LANCEDB_PATH                   — absolute path for the LanceDB store directory
+
+  5. Azure Functions Core Tools installed:
        npm install -g azure-functions-core-tools@4
 
 Start the function app:
@@ -861,12 +1148,14 @@ Start the function app:
 
 Confirm startup output shows:
   Functions:
-    http_cms_providers:    [GET]  http://localhost:7071/api/cms/providers
-    http_cms_crosswalk:    [GET]  http://localhost:7071/api/cms/crosswalk
-    http_cms_chunks:       [GET]  http://localhost:7071/api/cms/chunks
-    http_mtr_intake:       [POST] http://localhost:7071/api/mtr/intake
-    http_mtr_status:       [GET]  http://localhost:7071/api/mtr/{case_id}/status
-    mtr_intake_processor:  queueTrigger
+    http_cms_providers:       [GET]  http://localhost:7071/api/cms/providers
+    http_cms_crosswalk:       [GET]  http://localhost:7071/api/cms/crosswalk
+    http_cms_chunks:          [GET]  http://localhost:7071/api/cms/chunks
+    http_mtr_intake:          [POST] http://localhost:7071/api/mtr/intake
+    http_mtr_status:          [GET]  http://localhost:7071/api/mtr/{case_id}/status
+    http_mtr_validation:      [GET]  http://localhost:7071/api/mtr/{case_id}/validation
+    mtr_intake_processor:     queueTrigger  (mtr-intake-queue)
+    mtr_vectorize_processor:  queueTrigger  (mtr-vectorize-queue)
 
 ======================================================================
 ERROR HANDLING REFERENCE

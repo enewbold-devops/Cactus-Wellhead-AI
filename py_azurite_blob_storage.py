@@ -208,6 +208,44 @@ class CactusWHDBlobStorage:
                 return None
             raise
 
+    def read_mtr_structured_json(self, case_id: str) -> dict:
+        """Return the parsed structured JSON for a case from blob storage."""
+        stream = self._mtr_blob_client(
+            f"mtr/{case_id}/processed/{case_id}_structured.json"
+        ).download_blob()
+        return json.loads(stream.readall().decode("utf-8"))
+
+    def write_mtr_validation_json(
+        self, case_id: str, validation_dict: dict, overwrite: bool = True
+    ) -> dict:
+        """
+        Write the gate validation report to
+        mtr/{case_id}/processed/{case_id}_validation.json.
+        """
+        blob_path = f"mtr/{case_id}/processed/{case_id}_validation.json"
+        try:
+            raw = json.dumps(validation_dict, ensure_ascii=False, indent=2).encode("utf-8")
+            self._mtr_blob_client(
+                f"mtr/{case_id}/processed/{case_id}_validation.json"
+            ).upload_blob(raw, overwrite=overwrite)
+            return {"success": True, "blob": blob_path}
+        except Exception as exc:
+            return {"success": False, "error": str(exc), "blob": blob_path}
+
+    def get_mtr_validation_json(self, case_id: str) -> dict | None:
+        """
+        Return the parsed validation report for a case, or None if not yet written.
+        """
+        try:
+            stream = self._mtr_blob_client(
+                f"mtr/{case_id}/processed/{case_id}_validation.json"
+            ).download_blob()
+            return json.loads(stream.readall().decode("utf-8"))
+        except Exception as exc:
+            if "ResourceNotFound" in str(exc):
+                return None
+            raise
+
     # ------------------------------------------------------------------
     # General blob utilities
     # ------------------------------------------------------------------

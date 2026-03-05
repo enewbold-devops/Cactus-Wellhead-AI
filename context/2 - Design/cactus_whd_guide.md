@@ -1,9 +1,9 @@
 # Cactus WHD — Developer & SOP Guide
 
-> **Generated:** 2026-03-02  **Updated:** 2026-03-03
-> **Scope:** MTR Intake SOP · CMS Spec Validation · Approved Provider Correlation · Azure Functions HTTP API  
-> **Function App:** `function_app.py` · **Blob Module:** `py_azurite_blob_storage.py` · **Queue Module:** `py_azurite_queue_storage.py` · **Doc Processor:** `py_docling_chunks.py`  
-> **Containers:** `cactus-whd` (CMS rubric data) · `cactus-mtr` (MTR intake artifacts)
+> **Generated:** 2026-03-02  **Updated:** 2026-03-05
+> **Scope:** MTR Intake SOP · CMS Spec Validation · Approved Provider Correlation · Azure Functions HTTP API · AI Vectorization Pipeline
+> **Function App:** `function_app.py` · **Blob Module:** `py_azurite_blob_storage.py` · **Queue Module:** `py_azurite_queue_storage.py` · **Doc Processor:** `py_docling_chunks.py` · **Vector Store:** `py_vectodb.py`
+> **Containers:** `cactus-whd` (CMS rubric data) · `cactus-mtr` (MTR intake artifacts) · **Vector Store:** `vectordb_lancedb/` (LanceDB embedded, Azure OpenAI `text-embedding-3-large`, 3072 dims)
 
 ---
 
@@ -33,9 +33,11 @@
   - [5.4 Route: GET /api/cms/chunks](#54-route-get-apicmschunks)
   - [5.5 Route: POST /api/mtr/intake](#55-route-post-apimtrintake)
   - [5.6 Route: GET /api/mtr/{case_id}/status](#56-route-get-apimtrcase_idstatus)
-  - [5.7 Queue Trigger: mtr_intake_processor](#57-queue-trigger-mtr_intake_processor)
-  - [5.8 Cross-Route Validation Pattern](#58-cross-route-validation-pattern)
-  - [5.9 Error Handling Reference](#59-error-handling-reference)
+  - [5.7 Route: GET /api/mtr/{case_id}/validation](#57-route-get-apimtrcase_idvalidation)
+  - [5.8 Queue Trigger: mtr_intake_processor](#58-queue-trigger-mtr_intake_processor)
+  - [5.9 Queue Trigger: mtr_vectorize_processor](#59-queue-trigger-mtr_vectorize_processor)
+  - [5.10 Cross-Route Validation Pattern](#510-cross-route-validation-pattern)
+  - [5.11 Error Handling Reference](#511-error-handling-reference)
 - [6. Local Development Setup](#6-local-development-setup)
   - [6.1 Azurite Troubleshooting](#61-azurite-troubleshooting)
 - [7. JSON Artifact Reference](#7-json-artifact-reference)
@@ -105,16 +107,18 @@ Then:
 ### 2.2 Gate Model
 
 ```
-INTAKE → [Gate 0] → [Gate 1] → [Gate 2/3] → [Gate 4]
-          Completeness  Traceability  Technical    Record Lock
+INTAKE → Docling → AI Vectorize → [Gate 0] → [Gate 1] → [Gate 2/3] → [Gate 4]
+           (PDF)     (Embed+LanceDB)  Complete?  Identity   Technical   Record Lock
 ```
 
-| Gate | Name | Owner | Pass Criteria |
+| Gate | Name | Owner | Automation |
 |---|---|---|---|
-| **Gate 0** | Packet Completeness | Intake / Doc Control | All minimum required fields present |
-| **Gate 1** | Identity & Traceability | Receiving QC | Heat number matches PO + physical tag; grade matches PO |
-| **Gate 2/3** | Technical Validation | QE / Metallurgy | All CTQs pass CMS limits; provider approved |
-| **Gate 4** | Record Lock | Records Control | Case linked to CMS rev + provider IDs + disposition |
+| **Gate 0** | Packet Completeness | Intake / Doc Control | **Automated** — regex field presence check in `mtr_vectorize_processor` |
+| **Gate 1** | Identity & Traceability | Receiving QC | **Automated** — heat# extraction + grade resolution via semantic classification |
+| **Gate 2/3** | Technical Validation | QE / Metallurgy | *Planned* — CTQ limit check against `cms_spec_chunks` LanceDB store |
+| **Gate 4** | Record Lock | Records Control | Human disposition: locks to CMS rev + provider IDs |
+
+> **Automation note:** Gates 0 and 1 run automatically during the `mtr_vectorize_processor` step immediately after Docling extraction. Results are written to `{case_id}_validation.json` and surfaced in the web UI validation panel.
 
 **Gate 0 — Minimum Required Fields**
 
@@ -456,10 +460,15 @@ The following process codes have only one approved provider in the list:
 | 2 | `GET /api/cms/crosswalk` | GET | CMS-to-process-code crosswalk |
 | 3 | `GET /api/cms/chunks?cms_number=` | GET | Filtered JSONL chunks by CMS spec |
 | 4 | `POST /api/mtr/intake` | POST | Accepts MTR file; returns `case_id` (201) |
-| 5 | `GET /api/mtr/{case_id}/status` | GET | MTR case processing status |
+| 5 | `GET /api/mtr/{case_id}/status` | GET | MTR case processing status (poll this) |
+| 6 | `GET /api/mtr/{case_id}/validation` | GET | Gate results + chunk classification report |
 
-**Internal (non-HTTP):**  
-`mtr_intake_processor` — Azure Queue trigger on `mtr-intake-queue`. Runs Docling and writes processed artifacts to `cactus-mtr`.
+**Internal (non-HTTP) Queue Triggers:**
+
+| Trigger | Queue | Purpose |
+|---|---|---|
+| `mtr_intake_processor` | `mtr-intake-queue` | Docling PDF extraction; writes structured artifacts; enqueues vectorize job |
+| `mtr_vectorize_processor` | `mtr-vectorize-queue` | Azure OpenAI embedding; LanceDB write; Gate 0/1 automated validation |
 
 ---
 
@@ -870,27 +879,41 @@ curl -X POST http://localhost:7071/api/mtr/intake \
 #### Status Lifecycle
 
 ```
-queued → processing → complete
-                    → failed
+queued → processing → complete → vectorizing → validation_ready
+                                               → under_review       (review_flags raised)
+                                               → vectorize_failed   (embedding/LanceDB error)
+                     → failed        (Docling error)
+                     → queue_error   (file stored; queue send failed)
 ```
+
+**Terminal statuses** (stop polling when any of these is reached):
+`validation_ready` · `under_review` · `accepted` · `accepted_with_conditions` ·
+`rejected` · `deviation_required` · `failed` · `vectorize_failed` · `queue_error`
+
+> **Important:** `complete` is **not** terminal. It means Docling finished but AI vectorization is pending. Keep polling.
 
 #### Response Schema (`200 OK`)
 
 ```jsonc
 {
-  "case_id":       "3fa85f64-...",
-  "status":        "complete",       // "queued" | "processing" | "complete" | "failed"
-  "filename":      "heat_123456_mtr.pdf",
-  "submitted_at":  "2026-03-03T16:00:00+00:00",
-  "completed_at":  "2026-03-03T16:00:47+00:00",  // null until done
-  "chunk_count":   14,                             // null until complete
+  "case_id":          "3fa85f64-...",
+  "status":           "validation_ready",  // see lifecycle above
+  "filename":         "heat_123456_mtr.pdf",
+  "submitted_at":     "2026-03-03T16:00:00+00:00",
+  "completed_at":     "2026-03-03T16:00:47+00:00",  // Docling completion; null until done
+  "vectorized_at":    "2026-03-03T16:01:23+00:00",  // vectorize completion; null until done
+  "chunk_count":      14,                             // null until complete
+  "resolved_cms_set": ["CMS-002", "CMS-107"],         // CMS specs found; null until vectorized
+  "lancedb_table":    "mtr_3fa85f64_5717_4562_b3fc_2c963f66afa6",  // null until vectorized
+  "review_flags":     [],                             // human-review flags; null until vectorized
   "artifacts": {
     "raw":             "mtr/{case_id}/raw/{filename}",
     "markdown":        "mtr/{case_id}/processed/{case_id}.md",
     "chunks_jsonl":    "mtr/{case_id}/processed/{case_id}_chunks.jsonl",
-    "structured_json": "mtr/{case_id}/processed/{case_id}_structured.json"
+    "structured_json": "mtr/{case_id}/processed/{case_id}_structured.json",
+    "validation_json": "mtr/{case_id}/processed/{case_id}_validation.json"  // null until vectorized
   },
-  "error": null                       // error message string if status == "failed"
+  "error": null  // error message if status is "failed" or "vectorize_failed"
 }
 ```
 
@@ -901,29 +924,36 @@ queued → processing → complete
 | `404` | `case_id` not found |
 | `502` | Storage unreachable |
 
-#### Python Example
+#### Python Example (poll to terminal)
 
 ```python
 import requests, time
 
 BASE_URL = "http://localhost:7071/api"
 
-def wait_for_completion(case_id: str, poll_interval: int = 5, timeout: int = 300) -> dict:
+TERMINAL = {
+    "validation_ready", "under_review", "accepted", "accepted_with_conditions",
+    "rejected", "deviation_required", "failed", "vectorize_failed", "queue_error",
+}
+
+def poll_to_terminal(case_id: str, interval: int = 5, timeout: int = 600) -> dict:
     url = f"{BASE_URL}/mtr/{case_id}/status"
     elapsed = 0
     while elapsed < timeout:
-        status = requests.get(url, timeout=30).json()
-        print(f"[{elapsed}s] status={status['status']}")
-        if status["status"] in ("complete", "failed"):
-            return status
-        time.sleep(poll_interval)
-        elapsed += poll_interval
-    raise TimeoutError("Processing timed out")
+        record = requests.get(url, timeout=30).json()
+        print(f"[{elapsed}s] status={record['status']}")
+        if record["status"] in TERMINAL:
+            return record
+        time.sleep(interval)
+        elapsed += interval
+    raise TimeoutError("Pipeline did not reach terminal status")
 
-result = wait_for_completion("3fa85f64-5717-4562-b3fc-2c963f66afa6")
-if result["status"] == "complete":
-    print(f"Chunks: {result['chunk_count']}")
-    print(f"Markdown blob: {result['artifacts']['markdown']}")
+result = poll_to_terminal("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+print(f"Final status: {result['status']}")
+if result["status"] == "validation_ready":
+    print(f"CMS specs: {result['resolved_cms_set']}")
+    print(f"LanceDB table: {result['lancedb_table']}")
+    print(f"Validation report: {result['artifacts']['validation_json']}")
 ```
 
 #### curl
@@ -935,7 +965,94 @@ curl -s "http://localhost:7071/api/mtr/3fa85f64-5717-4562-b3fc-2c963f66afa6/stat
 
 ---
 
-### 5.7 Queue Trigger: mtr_intake_processor
+### 5.7 Route: GET /api/mtr/{case_id}/validation
+
+**Returns** the gate results and chunk classification report produced by `mtr_vectorize_processor`. Available once the case status reaches `validation_ready` or later.
+
+#### Response Schema (`200 OK`)
+
+```jsonc
+{
+  "case_id":          "3fa85f64-...",
+  "validated_at":     "2026-03-03T16:01:23+00:00",
+  "resolved_cms_set": ["CMS-002", "CMS-107"],
+  "gates": {
+    "gate_0": {
+      "status":         "pass",           // "pass" | "fail" | "pending"
+      "missing_fields": []                // field names absent from MTR if "fail"
+    },
+    "gate_1": {
+      "status":         "pass",
+      "heat_number":    "H123456",
+      "grade_resolved": "4140",
+      "po_reference":   "PO-2026-0042"
+    },
+    "gate_2": { "status": "pending" },   // CTQ limit check — future implementation
+    "gate_3": { "status": "pending" },   // provider correlation check — future
+    "gate_4": { "status": "open" }       // record lock — requires human disposition
+  },
+  "chunk_classifications": [
+    {
+      "chunk_index":     0,
+      "semantic_class":  "chemistry",     // see class table below
+      "confidence":      "high",
+      "needs_review":    false,
+      "extracted_fields": { "C": "0.41", "Mn": "0.89", "Si": "0.23" }
+    }, ...
+  ],
+  "review_flags": []  // human-readable QE review flags
+}
+```
+
+#### Semantic Chunk Classes
+
+| Class | What it captures |
+|---|---|
+| `chemistry` | Element table rows (C, Mn, Si, Cr, Mo, Ni, …) |
+| `charpy` | CVN impact test results (temp, joules/ft-lbs, orientation) |
+| `hardness` | Hardness readings (HRC, HBW, scale, location) |
+| `mechanical` | Tensile, yield, elongation, reduction-in-area results |
+| `heat_treatment` | HT actuals (austenitize temp, quench media, temper, soak time) |
+| `ndt` | NDT/NDE certificate references and results |
+| `identity` | Heat number, PO number, grade, part number, material form |
+| `other` | All remaining text blocks |
+
+#### Error Responses
+
+| Status | Meaning |
+|---|---|
+| `404` + `"not yet available"` | Case exists but vectorization not completed |
+| `404` + `"Case not found"` | Unknown `case_id` |
+| `502` | Storage unreachable |
+
+#### Python Example
+
+```python
+import requests
+
+BASE_URL = "http://localhost:7071/api"
+
+def get_validation(case_id: str) -> dict:
+    resp = requests.get(f"{BASE_URL}/mtr/{case_id}/validation", timeout=30)
+    if resp.status_code == 404:
+        raise ValueError(resp.json()["error"])
+    resp.raise_for_status()
+    return resp.json()
+
+val = get_validation("3fa85f64-5717-4562-b3fc-2c963f66afa6")
+print(f"CMS specs: {val['resolved_cms_set']}")
+print(f"Gate 0: {val['gates']['gate_0']['status']}")
+print(f"Gate 1: {val['gates']['gate_1']}")
+
+from collections import Counter
+counts = Counter(c["semantic_class"] for c in val["chunk_classifications"])
+for cls, n in sorted(counts.items(), key=lambda x: -x[1]):
+    print(f"  {cls}: {n} chunk(s)")
+```
+
+---
+
+### 5.8 Queue Trigger: mtr_intake_processor
 
 This is an internal Azure Functions queue trigger — **not an HTTP endpoint**. It fires automatically when a message appears on `mtr-intake-queue`.
 
@@ -958,6 +1075,7 @@ This is an internal Azure Functions queue trigger — **not an HTTP endpoint**. 
 7. Write all three processed artifacts to `cactus-mtr`
 8. Update `status.json` → `"complete"` with `chunk_count` and `completed_at`
 9. On any exception: update `status.json` → `"failed"` with error message
+10. **Enqueue message on `mtr-vectorize-queue`** to trigger AI vectorization (non-fatal — failure logs a warning but does not change status)
 
 #### Blobs Written at Process Time
 
@@ -985,7 +1103,72 @@ cactus-mtr/
 
 ---
 
-### 5.8 Cross-Route Validation Pattern
+### 5.9 Queue Trigger: mtr_vectorize_processor
+
+This is an internal Azure Functions queue trigger — **not an HTTP endpoint**. It fires automatically after `mtr_intake_processor` enqueues a message on `mtr-vectorize-queue`.
+
+#### Trigger Configuration
+
+| Property | Value |
+|---|---|
+| Queue name | `mtr-vectorize-queue` |
+| Poison queue | `mtr-vectorize-queue-poison` |
+| Connection setting | `AzureWebJobsStorage` |
+| Batch size | 1 |
+| Visibility timeout | 300 s |
+| Max dequeue count | 5 |
+
+#### Processing Steps
+
+1. Parse message — extract `case_id`
+2. Update `status.json` → `"vectorizing"`
+3. Load `{case_id}_structured.json` from blob
+4. Resolve CMS spec set via regex across all chunk text
+5. Classify each chunk by **semantic class** (regex pattern matching)
+6. Extract structured fields per chunk (element values, test results, identifiers)
+7. Build `text_for_embed` string per chunk (section label + extracted fields + raw text)
+8. Batch embed all chunks via **Azure OpenAI `text-embedding-3-large`** at **3072 dims** (batch size: 16 chunks/call)
+9. Write chunk rows to LanceDB per-case table (`threading.Lock` + `FileLock` mutex)
+10. **Gate 0** — completeness check: verify heat#, PO#, chemistry, mechanicals, hardness present
+11. **Gate 1** — identity check: confirm heat number extracted, grade resolved, PO reference found
+12. Write `{case_id}_validation.json` to blob; update `status.json` → `"validation_ready"` (or `"under_review"` if `review_flags` non-empty)
+    On any exception: update `status.json` → `"vectorize_failed"` with error message
+
+#### Concurrency Model
+
+| Layer | Mechanism |
+|---|---|
+| In-process | `threading.Lock` (module-level `_THREAD_LOCK`) |
+| Cross-process | `FileLock` on `{LANCEDB_PATH}/.lancedb_write.lock` |
+| LanceDB upsert | `table.delete(filter)` then `table.add(rows)` inside lock |
+
+#### Azure OpenAI Configuration
+
+| Setting | Env Var | Value |
+|---|---|---|
+| Endpoint | `AZURE_OPENAI_ENDPOINT` | Your Azure OpenAI resource URL |
+| API Key | `AZURE_OPENAI_API_KEY` | Your Azure OpenAI API key |
+| Deployment | `AZURE_OPENAI_EMBED_DEPLOYMENT` | `text-embedding-3-large` |
+| API Version | (hardcoded) | `2024-02-01` |
+| Dimensions | (hardcoded) | `3072` |
+
+#### LanceDB Tables Written
+
+| Table | Purpose |
+|---|---|
+| `mtr_{case_id_underscored}` | Per-case embedded chunks (19 fields + 3072-dim vector) |
+| `mtr_case_registry` | Flat registry row for this case (no vector) |
+
+#### Blobs Written
+
+```
+cactus-mtr/
+  mtr/{case_id}/processed/{case_id}_validation.json   ← gate results + chunk classifications
+```
+
+---
+
+### 5.10 Cross-Route Validation Pattern
 
 This pattern combines all three endpoints to fully validate a provider against CMS rules — the core logic for the MTR intake engine.
 
@@ -1056,7 +1239,7 @@ print(validate_mtr_provider("CMS-305", "CCS-612", "Houston Plating & Coatings"))
 
 ---
 
-### 5.9 Error Handling Reference
+### 5.11 Error Handling Reference
 
 | HTTP Status | Meaning | Caller Action |
 |---|---|---|
@@ -1122,14 +1305,24 @@ cactus-whd/
 cactus-mtr/
 └── mtr/{case_id}/
     ├── raw/{filename}                    ← original file upload
-    ├── status.json                       ← case status record
+    ├── status.json                       ← case status record (updated throughout pipeline)
     └── processed/
         ├── {case_id}.md                  ← Docling markdown
         ├── {case_id}_chunks.jsonl        ← one record per chunk
-        └── {case_id}_structured.json     ← doc metadata + chunk array
+        ├── {case_id}_structured.json     ← doc metadata + chunk array
+        └── {case_id}_validation.json     ← gate results + chunk classifications (written after vectorization)
 ```
 
-**Queue `mtr-intake-queue`** — must exist before starting the function app.
+**LanceDB vector store** — written by `mtr_vectorize_processor`:
+
+```
+vectordb_lancedb/
+├── cms_spec_chunks          ← CMS spec knowledge base (seed separately via /api/cms/chunks)
+├── mtr_{case_id_underscored} ← per-case embedded chunks table (one per MTR case)
+└── mtr_case_registry        ← flat registry of all case metadata
+```
+
+**Queues required** — both must exist before starting the function app:
 
 Provision containers and queues in Azurite:
 
@@ -1148,7 +1341,14 @@ bsvc.create_container("cactus-mtr")   # if not exists
 qsvc = QueueServiceClient.from_connection_string(queue_cs)
 qsvc.create_queue("mtr-intake-queue")
 qsvc.create_queue("mtr-intake-queue-poison")
+qsvc.create_queue("mtr-vectorize-queue")
+qsvc.create_queue("mtr-vectorize-queue-poison")
 ```
+
+> **LanceDB directory** — auto-created on first write, but can be pre-created:
+> ```powershell
+> mkdir vectordb_lancedb
+> ```
 
 ### Starting the Stack
 
@@ -1167,12 +1367,14 @@ func start
 
 ```
 Functions:
-  http_cms_providers:    [GET]  http://localhost:7071/api/cms/providers
-  http_cms_crosswalk:    [GET]  http://localhost:7071/api/cms/crosswalk
-  http_cms_chunks:       [GET]  http://localhost:7071/api/cms/chunks
-  http_mtr_intake:       [POST] http://localhost:7071/api/mtr/intake
-  http_mtr_status:       [GET]  http://localhost:7071/api/mtr/{case_id}/status
-  mtr_intake_processor:  queueTrigger
+  http_cms_providers:       [GET]  http://localhost:7071/api/cms/providers
+  http_cms_crosswalk:       [GET]  http://localhost:7071/api/cms/crosswalk
+  http_cms_chunks:          [GET]  http://localhost:7071/api/cms/chunks
+  http_mtr_intake:          [POST] http://localhost:7071/api/mtr/intake
+  http_mtr_status:          [GET]  http://localhost:7071/api/mtr/{case_id}/status
+  http_mtr_validation:      [GET]  http://localhost:7071/api/mtr/{case_id}/validation
+  mtr_intake_processor:     queueTrigger  (mtr-intake-queue)
+  mtr_vectorize_processor:  queueTrigger  (mtr-vectorize-queue)
 ```
 
 ### Settings (`local.settings.json`)
@@ -1183,12 +1385,18 @@ Functions:
   "Values": {
     "AzureWebJobsStorage": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;",
     "FUNCTIONS_WORKER_RUNTIME": "python",
-    "BLOB_CONNECTION_STRING": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+    "BLOB_CONNECTION_STRING": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+    "AZURE_OPENAI_ENDPOINT": "https://<your-resource>.openai.azure.com/",
+    "AZURE_OPENAI_API_KEY": "<your-api-key>",
+    "AZURE_OPENAI_EMBED_DEPLOYMENT": "text-embedding-3-large",
+    "LANCEDB_PATH": "C:\\Users\\AI Engine\\Documents\\Cactus Wellhead AI\\vectordb_lancedb"
   }
 }
 ```
 
 > **Note:** `AzureWebJobsStorage` must be a full connection string (not `UseDevelopmentStorage=true`) when Azurite runs with a custom account key. The queue trigger requires this value to authenticate with Azurite's queue endpoint.
+>
+> **Note:** Fill in real `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` values before running `mtr_vectorize_processor`. The vectorization step will fail with a 401 if these are left as placeholders.
 
 ---
 
@@ -1263,10 +1471,19 @@ for b in svc.get_container_client("cactus-whd").list_blobs():
 | File | Blob Path | Written By | Purpose |
 |---|---|---|---|
 | `{filename}` | `mtr/{case_id}/raw/` | `http_mtr_intake` (POST) | Original file as received |
-| `status.json` | `mtr/{case_id}/` | Both functions | Case status record (updated throughout) |
+| `status.json` | `mtr/{case_id}/` | Both triggers + HTTP | Case status record (updated throughout pipeline) |
 | `{case_id}.md` | `mtr/{case_id}/processed/` | `mtr_intake_processor` | Docling markdown output |
 | `{case_id}_chunks.jsonl` | `mtr/{case_id}/processed/` | `mtr_intake_processor` | One JSON object per chunk |
-| `{case_id}_structured.json` | `mtr/{case_id}/processed/` | `mtr_intake_processor` | Doc metadata + chunk array |
+| `{case_id}_structured.json` | `mtr/{case_id}/processed/` | `mtr_intake_processor` | Doc metadata + chunk array (input to vectorizer) |
+| `{case_id}_validation.json` | `mtr/{case_id}/processed/` | `mtr_vectorize_processor` | Gate results + chunk classifications |
+
+### LanceDB vector store — `vectordb_lancedb/`
+
+| Table | Schema | Written By | Purpose |
+|---|---|---|---|
+| `cms_spec_chunks` | 10 fields + 3072-dim vector | Seeding script (manual) | CMS specification knowledge base for Gate 2/3 CTQ lookup |
+| `mtr_{case_id_underscored}` | 19 fields + 3072-dim vector | `mtr_vectorize_processor` | Per-case embedded MTR chunk table |
+| `mtr_case_registry` | 17 fields (no vector) | `mtr_vectorize_processor` | Flat registry of all case metadata for cross-case analytics |
 
 ### crosswalk entry structure
 
@@ -1290,6 +1507,34 @@ for b in svc.get_container_client("cactus-whd").list_blobs():
 4. Drive evidence field completeness checklist from `typical_mtr_evidence`
 5. Enforce `sop_notes` flags in disposition logic
 
+### Full pipeline artifact flow
+
+```
+POST /api/mtr/intake
+  └─→ mtr/{case_id}/raw/{filename}           [blob: cactus-mtr]
+  └─→ mtr/{case_id}/status.json              [status: "queued"]
+  └─→ mtr-intake-queue message enqueued
+
+mtr_intake_processor (Docling)
+  └─→ mtr/{case_id}/processed/{id}.md        [Docling markdown]
+  └─→ mtr/{case_id}/processed/{id}_chunks.jsonl
+  └─→ mtr/{case_id}/processed/{id}_structured.json
+  └─→ mtr/{case_id}/status.json              [status: "complete"]
+  └─→ mtr-vectorize-queue message enqueued
+
+mtr_vectorize_processor (Azure OpenAI + LanceDB)
+  └─→ mtr_{case_id} LanceDB table            [embedded chunks, 3072 dims]
+  └─→ mtr_case_registry LanceDB table        [case metadata row]
+  └─→ mtr/{case_id}/processed/{id}_validation.json  [gate results]
+  └─→ mtr/{case_id}/status.json              [status: "validation_ready" or "under_review"]
+
+GET /api/mtr/{case_id}/validation
+  └─ returns {id}_validation.json contents
+
+GET /api/mtr/{case_id}/status
+  └─ returns status.json contents (poll until terminal status)
+```
+
 ---
 
-*End of Guide — Cactus WHD Developer & SOP Reference · Updated 2026-03-03*
+*End of Guide — Cactus WHD Developer & SOP Reference · Updated 2026-03-05*

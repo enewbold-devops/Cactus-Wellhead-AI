@@ -19,17 +19,30 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 
 const POLL_INTERVAL_MS  = 5000;
-const TERMINAL_STATUSES = new Set(['complete', 'failed', 'queue_error']);
+const TERMINAL_STATUSES = new Set([
+  'validation_ready', 'under_review',
+  'accepted', 'accepted_with_conditions',
+  'rejected', 'deviation_required',
+  'failed', 'vectorize_failed', 'queue_error',
+]);
 
 const HISTORY_KEY = 'cactus_mtr_history';
 const HISTORY_MAX = 50;
 
 const STATUS_BADGE = {
-  queued:      ['badge--gray',  'Queued'],
-  processing:  ['badge--amber', 'Processing'],
-  complete:    ['badge--green', 'Complete'],
-  failed:      ['badge--red',   'Failed'],
-  queue_error: ['badge--red',   'Queue Error'],
+  queued:                    ['badge--gray',    'Queued'],
+  processing:                ['badge--amber',   'Processing'],
+  complete:                  ['badge--amber',   'Docling Complete'],
+  vectorizing:               ['badge--amber',   'Vectorizing'],
+  validation_ready:          ['badge--blue',    'Validation Ready'],
+  under_review:              ['badge--amber',   'Under Review'],
+  accepted:                  ['badge--emerald', 'Accepted'],
+  accepted_with_conditions:  ['badge--amber',   'Accepted w/ Conditions'],
+  rejected:                  ['badge--red',     'Rejected'],
+  deviation_required:        ['badge--red',     'Deviation Required'],
+  failed:                    ['badge--red',     'Failed'],
+  vectorize_failed:          ['badge--red',     'Vectorize Failed'],
+  queue_error:               ['badge--red',     'Queue Error'],
 };
 
 /* ──────────────────────────────────────────────────────────────
@@ -66,6 +79,13 @@ const Api = {
   /** GET /api/cms/crosswalk */
   async getCrosswalk() {
     const resp = await fetch(`${BASE_URL}/cms/crosswalk`);
+    const body = await resp.json();
+    return { ok: resp.ok, status: resp.status, body };
+  },
+
+  /** GET /api/mtr/{caseId}/validation */
+  async getMtrValidation(caseId) {
+    const resp = await fetch(`${BASE_URL}/mtr/${encodeURIComponent(caseId)}/validation`);
     const body = await resp.json();
     return { ok: resp.ok, status: resp.status, body };
   },
@@ -307,28 +327,41 @@ const Views = {
       this._updateStepper(record.status);
       this._updateMeta(record);
       this._updateArtifacts(record);
+      this._updateValidationPanel(record);
     },
 
     _updateStepper(statusKey) {
-      // Full ordered step list — failed is terminal, sits at end
-      const ORDER = ['received', 'queued', 'processing', 'complete', 'failed'];
-      const isFailed = statusKey === 'failed' || statusKey === 'queue_error';
+      const STEP_ORDER = ['received', 'queued', 'processing', 'vectorizing', 'validated', 'failed'];
+      const STATUS_TO_STEP = {
+        queued:                   'queued',
+        processing:               'processing',
+        complete:                 'vectorizing',   // Docling done, vectorize pending
+        vectorizing:              'vectorizing',
+        validation_ready:         'validated',
+        under_review:             'validated',
+        accepted:                 'validated',
+        accepted_with_conditions: 'validated',
+        rejected:                 'validated',
+        deviation_required:       'validated',
+        failed:                   'failed',
+        vectorize_failed:         'failed',
+        queue_error:              'failed',
+      };
 
-      // Resolve which step should be active
-      const activeStep = isFailed ? 'failed' : statusKey;
-      const activeIdx  = ORDER.indexOf(activeStep);
+      const activeStep = STATUS_TO_STEP[statusKey] || 'queued';
+      const isError    = activeStep === 'failed';
+      const activeIdx  = STEP_ORDER.indexOf(activeStep);
 
       document.querySelectorAll('.step').forEach(el => {
         const step = el.dataset.step;
+        const idx  = STEP_ORDER.indexOf(step);
         el.classList.remove('done', 'active');
 
-        const idx = ORDER.indexOf(step);
-
-        // 'complete' and 'failed' are terminal endpoints — never mark as done
-        if (step === 'complete' || step === 'failed') {
-          if (idx === activeIdx) el.classList.add('active');
+        if (step === 'failed') {
+          if (isError) el.classList.add('active');
           return;
         }
+        if (step === 'validated' && isError) return;
 
         if (idx < activeIdx) {
           el.classList.add('done');
@@ -348,6 +381,18 @@ const Views = {
         ['Completed',    formatDate(record.completed_at)],
         ['Chunks',       record.chunk_count != null ? record.chunk_count : '—'],
       ];
+      if (record.vectorized_at) {
+        fields.push(['Vectorized', formatDate(record.vectorized_at)]);
+      }
+      if (record.resolved_cms_set && record.resolved_cms_set.length) {
+        fields.push(['CMS Specs', record.resolved_cms_set.join(' · ')]);
+      }
+      if (record.lancedb_table) {
+        fields.push(['Vector Table', `<code style="font-size:.75rem">${escHtml(record.lancedb_table)}</code>`]);
+      }
+      if (record.review_flags && record.review_flags.length) {
+        fields.push(['Review Flags', `<span class="badge badge--amber">${record.review_flags.length} flag${record.review_flags.length !== 1 ? 's' : ''}</span>`]);
+      }
       grid.innerHTML = fields.map(([label, value]) => `
         <div class="meta-item">
           <span class="meta-label">${escHtml(label)}</span>
@@ -367,7 +412,8 @@ const Views = {
 
     _updateArtifacts(record) {
       const panel = $('status-artifacts');
-      if (record.status !== 'complete' || !record.artifacts) {
+      const HIDE_FOR = new Set(['queued', 'processing', 'failed', 'queue_error']);
+      if (HIDE_FOR.has(record.status) || !record.artifacts) {
         panel.classList.add('hidden');
         return;
       }
@@ -378,13 +424,124 @@ const Views = {
         markdown:        'Markdown',
         chunks_jsonl:    'Chunks JSONL',
         structured_json: 'Structured JSON',
+        validation_json: 'Validation Report',
       };
       tbody.innerHTML = Object.entries(record.artifacts).map(([key, path]) => `
         <tr>
           <td class="artifact-label">${escHtml(labels[key] || key)}</td>
-          <td>${escHtml(path || '—')}</td>
+          <td><code style="font-size:.75rem;word-break:break-all">${escHtml(path || '—')}</code></td>
         </tr>
       `).join('');
+    },
+
+    async _updateValidationPanel(record) {
+      const panel = $('validation-panel');
+      const SHOW_FOR = new Set([
+        'validation_ready', 'under_review', 'accepted',
+        'accepted_with_conditions', 'rejected', 'deviation_required',
+      ]);
+      if (!SHOW_FOR.has(record.status)) {
+        panel.classList.add('hidden');
+        return;
+      }
+      panel.classList.remove('hidden');
+
+      // Gate results from status.json (always present)
+      this._renderGateGrid(record.gate_results || {});
+
+      // Validation detail from status.json fields
+      this._renderValidationDetail(record);
+
+      // Full chunk classifications — fetch from validation.json API
+      try {
+        const { ok, body } = await Api.getMtrValidation(record.case_id);
+        if (ok && body.chunk_classifications) {
+          this._renderChunkClasses(body.chunk_classifications);
+        }
+      } catch { /* non-fatal — chunk grid stays empty */ }
+    },
+
+    _renderGateGrid(gates) {
+      const GATE_META = {
+        gate_0: { label: 'Gate 0', sub: 'Completeness' },
+        gate_1: { label: 'Gate 1', sub: 'Traceability' },
+        gate_2: { label: 'Gate 2', sub: 'Technical CTQ' },
+        gate_3: { label: 'Gate 3', sub: 'Provider Match' },
+        gate_4: { label: 'Gate 4', sub: 'Record Lock' },
+      };
+      const ICONS   = { pass: '✓', fail: '✕', pending: '⏳', open: '○' };
+      const CLASSES = { pass: 'badge--emerald', fail: 'badge--red', pending: 'badge--amber', open: 'badge--gray' };
+      const LABELS  = { pass: 'Pass', fail: 'Fail', pending: 'Pending', open: 'Open' };
+
+      $('gate-results-grid').innerHTML = Object.entries(GATE_META).map(([key, meta]) => {
+        const gate   = gates[key] || { result: 'open' };
+        const result = gate.result || 'open';
+        const missing = (gate.missing_fields || []);
+        const missingHtml = missing.length
+          ? `<div class="gate-missing">Missing: ${missing.map(f => `<code>${escHtml(f)}</code>`).join(', ')}</div>`
+          : '';
+        return `
+          <div class="gate-item gate-item--${escHtml(result)}">
+            <div class="gate-header">
+              <span class="gate-icon">${ICONS[result] || '○'}</span>
+              <div class="gate-labels">
+                <span class="gate-label">${escHtml(meta.label)}</span>
+                <span class="gate-sublabel">${escHtml(meta.sub)}</span>
+              </div>
+            </div>
+            <span class="badge ${CLASSES[result] || 'badge--gray'}">${LABELS[result] || result}</span>
+            ${missingHtml}
+          </div>`;
+      }).join('');
+    },
+
+    _renderValidationDetail(record) {
+      const cms    = record.resolved_cms_set || [];
+      const gate1  = (record.gate_results || {}).gate_1 || {};
+      const flags  = record.review_flags || [];
+
+      const cmsHtml = cms.length
+        ? cms.map(c => `<span class="cms-chip">${escHtml(c)}</span>`).join('')
+        : '<span style="color:var(--gray-400);font-size:.82rem">None resolved</span>';
+
+      const flagsHtml = flags.length
+        ? flags.map(f =>
+            `<span class="risk-pill risk-pill--manual">${escHtml((f.semantic_class || '') + ' · chunk ' + (f.chunk_index ?? ''))}</span>`
+          ).join(' ')
+        : '<span style="font-size:.82rem;color:var(--gray-500)">None</span>';
+
+      $('validation-detail').innerHTML = `
+        <div class="validation-detail-grid">
+          <div class="vd-item vd-item--wide">
+            <span class="meta-label">Resolved CMS Set</span>
+            <div class="cms-chips">${cmsHtml}</div>
+          </div>
+          <div class="vd-item">
+            <span class="meta-label">Heat Number</span>
+            <span class="meta-value mono">${escHtml(gate1.heat_number || '—')}</span>
+          </div>
+          <div class="vd-item">
+            <span class="meta-label">PO Number</span>
+            <span class="meta-value mono">${escHtml(gate1.po_number || '—')}</span>
+          </div>
+          <div class="vd-item vd-item--wide">
+            <span class="meta-label">Review Flags</span>
+            <div style="margin-top:.25rem">${flagsHtml}</div>
+          </div>
+        </div>`;
+    },
+
+    _renderChunkClasses(classifications) {
+      // Aggregate counts per semantic_class
+      const counts = {};
+      for (const c of classifications) {
+        const cls = c.semantic_class || 'other';
+        counts[cls] = (counts[cls] || 0) + 1;
+      }
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      $('chunk-class-grid').innerHTML = sorted.map(([cls, n]) =>
+        `<span class="chunk-class-pill">${escHtml(cls)}<span class="cc-count">${n}</span></span>`
+      ).join('');
     },
   },
 

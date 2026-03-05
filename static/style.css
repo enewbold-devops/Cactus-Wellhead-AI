@@ -347,7 +347,12 @@ h3 { font-size: 1rem; font-weight: 600; color: var(--gray-700); margin-bottom: .
 .step.done .step-dot::after { content: '✓'; color: var(--white); font-size: .7rem; font-weight: 700; }
 .step.active .step-dot { border-color: var(--blue-700); box-shadow: 0 0 0 3px var(--blue-100); }
 .step.active[data-step="failed"] .step-dot { border-color: var(--red-600); box-shadow: 0 0 0 3px var(--red-100); }
-.step.active[data-step="failed"] .step-dot::after { content: '✕'; color: var(--red-600); font-size: .7rem; font-weight: 700; }
+.step.active[data-step="failed"] .step-dot::after { content: '\2715'; color: var(--red-600); font-size: .7rem; font-weight: 700; }
+.step.step--error .step-dot { border-color: var(--gray-300); }
+.step.step--error .step-label { color: var(--gray-400); }
+.step.active[data-step="validated"] .step-dot { border-color: #065f46; background: #065f46; box-shadow: 0 0 0 3px #d1fae5; }
+.step.active[data-step="validated"] .step-dot::after { content: '\2713'; color: var(--white); font-size: .7rem; font-weight: 700; }
+.step.active[data-step="validated"] .step-label { color: #065f46; font-weight: 600; }
 
 .step-label { font-size: .75rem; color: var(--gray-500); font-weight: 500; text-align: center; }
 .step.done .step-label { color: var(--blue-700); font-weight: 600; }
@@ -470,11 +475,13 @@ h3 { font-size: 1rem; font-weight: 600; color: var(--gray-700); margin-bottom: .
   text-transform: uppercase;
   white-space: nowrap;
 }
-.badge--gray   { background: var(--gray-100); color: var(--gray-700); }
-.badge--amber  { background: var(--amber-100); color: var(--amber-600); }
-.badge--green  { background: var(--blue-100); color: var(--blue-800); }
-.badge--red    { background: var(--red-100); color: var(--red-700); }
-.badge--active { background: var(--blue-100); color: var(--blue-800); }
+.badge--gray    { background: var(--gray-100);  color: var(--gray-700); }
+.badge--amber   { background: var(--amber-100); color: var(--amber-600); }
+.badge--green   { background: var(--blue-100);  color: var(--blue-800); }
+.badge--red     { background: var(--red-100);   color: var(--red-700); }
+.badge--blue    { background: #e0e7ff;           color: #3730a3; }   /* validation_ready — indigo */
+.badge--emerald { background: #d1fae5;           color: #065f46; }   /* accepted — green */
+.badge--active  { background: var(--blue-100);  color: var(--blue-800); }
 .badge--inactive { background: var(--gray-100); color: var(--gray-500); }
 
 /* ─── Risk Pills ────────────────────────────────────────────── */
@@ -562,6 +569,79 @@ h3 { font-size: 1rem; font-weight: 600; color: var(--gray-700); margin-bottom: .
   flex-shrink: 0;
 }
 .app-footer code { font-size: .72rem; color: var(--blue-700); }
+
+/* ─── Gate Results Panel ───────────────────────────────────── */
+.gate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: .75rem;
+}
+.gate-item {
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius);
+  padding: .875rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.gate-item--pass    { border-color: #a7f3d0; background: #f0fdf4; }
+.gate-item--fail    { border-color: var(--red-100); background: var(--red-50); }
+.gate-item--pending { border-color: var(--amber-100); background: var(--amber-50); }
+.gate-item--open    { border-color: var(--gray-200); background: var(--gray-50); }
+.gate-header { display: flex; align-items: center; gap: .5rem; }
+.gate-icon { font-size: 1rem; line-height: 1; }
+.gate-labels { display: flex; flex-direction: column; }
+.gate-label { font-size: .85rem; font-weight: 700; color: var(--gray-900); }
+.gate-sublabel { font-size: .7rem; color: var(--gray-500); }
+.gate-missing { font-size: .72rem; color: var(--red-700); }
+.gate-missing code { font-size: .7rem; background: var(--red-50); padding: 0 .25rem; border-radius: 2px; }
+
+/* ─── Validation Detail Panel ───────────────────────────────── */
+.validation-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: .75rem 1.5rem;
+}
+.vd-item { display: flex; flex-direction: column; gap: .3rem; }
+.vd-item--wide { grid-column: 1 / -1; }
+
+/* ─── CMS Spec Chips ────────────────────────────────────────── */
+.cms-chips { display: flex; flex-wrap: wrap; gap: .375rem; margin-top: .25rem; }
+.cms-chip {
+  display: inline-block;
+  padding: .2rem .6rem;
+  background: var(--blue-100);
+  color: var(--blue-800);
+  border: 1px solid var(--blue-600);
+  border-radius: var(--radius-sm);
+  font-size: .72rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  letter-spacing: .03em;
+}
+
+/* ─── Chunk Classification Pills ────────────────────────────── */
+.chunk-class-grid { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
+.chunk-class-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .2rem .55rem;
+  border-radius: 9999px;
+  font-size: .72rem;
+  font-weight: 600;
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+.chunk-class-pill .cc-count {
+  background: var(--gray-300);
+  color: var(--gray-700);
+  border-radius: 9999px;
+  padding: 0 .35rem;
+  font-size: .65rem;
+  font-weight: 700;
+}
+.meta-value.mono { font-family: var(--mono); font-size: .82rem; }
 
 /* ─── Utility ───────────────────────────────────────────────── */
 .hidden { display: none !important; }
