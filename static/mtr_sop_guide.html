@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cactus WHD — MTR SOP Guide</title>
+  <style>
+    /* ── Globals ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:     #C0392B;
+      --red-dk:  #96281B;
+      --red-lt:  #FADBD8;
+      --gold:    #D4AC0D;
+      --gold-lt: #FEF9E7;
+      --green:   #1E8449;
+      --green-lt:#D5F5E3;
+      --blue:    #1A5276;
+      --blue-lt: #D6EAF8;
+      --gray:    #2C3E50;
+      --gray-lt: #ECF0F1;
+      --border:  #D5D8DC;
+      --text:    #1C2833;
+      --muted:   #717D7E;
+      --white:   #FFFFFF;
+      --shadow:  0 2px 12px rgba(0,0,0,.10);
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #F4F6F7;
+      color: var(--text);
+      line-height: 1.65;
+    }
+
+    /* ── Top nav ── */
+    header {
+      background: var(--red);
+      color: var(--white);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    .header-inner {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: .75rem 2rem;
+    }
+    .logo-mark {
+      width: 40px; height: 40px;
+      background: var(--white);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-mark svg { width: 26px; height: 26px; }
+    .header-title { flex: 1; }
+    .header-title h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: .02em; }
+    .header-title p  { font-size: .72rem; opacity: .85; }
+
+    nav.top-nav {
+      background: var(--red-dk);
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    nav.top-nav::-webkit-scrollbar { display: none; }
+    nav.top-nav button {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,.8);
+      font-size: .78rem;
+      font-weight: 600;
+      padding: .6rem 1.1rem;
+      cursor: pointer;
+      white-space: nowrap;
+      border-bottom: 3px solid transparent;
+      transition: color .2s, border-color .2s;
+    }
+    nav.top-nav button:hover,
+    nav.top-nav button.active {
+      color: var(--white);
+      border-bottom-color: var(--gold);
+    }
+
+    /* ── Layout ── */
+    main { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    .section-panel {
+      display: none;
+      animation: fadeIn .25s ease;
+    }
+    .section-panel.active { display: block; }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    /* ── Page titles ── */
+    .page-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--red);
+      margin-bottom: .25rem;
+    }
+    .page-subtitle {
+      color: var(--muted);
+      font-size: .85rem;
+      margin-bottom: 1.75rem;
+      border-bottom: 2px solid var(--red);
+      padding-bottom: .75rem;
+    }
+
+    /* ── Cards / blocks ── */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--blue);
+      margin-bottom: .75rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .card-title .icon {
+      width: 22px; height: 22px;
+      background: var(--blue);
+      border-radius: 50%;
+      color: white;
+      font-size: .65rem;
+      font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ── KPI tiles ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .kpi-tile {
+      background: var(--white);
+      border-radius: 10px;
+      padding: 1.1rem 1.2rem;
+      border-left: 4px solid var(--red);
+      box-shadow: var(--shadow);
+    }
+    .kpi-tile.gold  { border-left-color: var(--gold); }
+    .kpi-tile.green { border-left-color: var(--green); }
+    .kpi-tile.blue  { border-left-color: var(--blue); }
+    .kpi-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .kpi-value { font-size: 1.35rem; font-weight: 800; color: var(--gray); margin: .2rem 0 0; }
+
+    /* ── Two-col ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+    @media (max-width: 680px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ── Lists ── */
+    ul.styled, ol.styled { padding-left: 1.3rem; }
+    ul.styled li, ol.styled li { margin-bottom: .35rem; font-size: .9rem; }
+    ul.styled li::marker { color: var(--red); }
+
+    /* ── Accordion ── */
+    .accordion { margin-bottom: .75rem; }
+    .accordion-btn {
+      width: 100%;
+      background: var(--gray-lt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .85rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: .9rem;
+      color: var(--gray);
+      transition: background .2s;
+      text-align: left;
+    }
+    .accordion-btn:hover { background: #DDE1E3; }
+    .accordion-btn.open { background: var(--blue); color: var(--white); border-color: var(--blue); border-radius: 8px 8px 0 0; }
+    .accordion-btn .chevron { font-size: .75rem; transition: transform .25s; flex-shrink: 0; margin-left: .5rem; }
+    .accordion-btn.open .chevron { transform: rotate(180deg); }
+    .accordion-body {
+      display: none;
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      padding: 1.1rem 1.3rem;
+      font-size: .87rem;
+    }
+    .accordion-body.open { display: block; animation: fadeIn .2s ease; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; margin: .75rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    th {
+      background: var(--gray);
+      color: var(--white);
+      padding: .65rem .9rem;
+      text-align: left;
+      font-weight: 700;
+      letter-spacing: .03em;
+      white-space: nowrap;
+    }
+    td { padding: .6rem .9rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:nth-child(even) td { background: #F8F9FA; }
+    tr:hover td { background: var(--blue-lt); }
+
+    /* ── Badges / tags ── */
+    .badge {
+      display: inline-block;
+      padding: .2rem .55rem;
+      border-radius: 4px;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .badge-red    { background: var(--red-lt);   color: var(--red); }
+    .badge-gold   { background: var(--gold-lt);  color: #7D6608; }
+    .badge-green  { background: var(--green-lt); color: var(--green); }
+    .badge-blue   { background: var(--blue-lt);  color: var(--blue); }
+    .badge-gray   { background: var(--gray-lt);  color: var(--gray); }
+
+    /* ── Alert banners ── */
+    .alert {
+      border-radius: 8px;
+      padding: .9rem 1.1rem;
+      margin-bottom: 1rem;
+      font-size: .87rem;
+      display: flex;
+      gap: .75rem;
+      align-items: flex-start;
+    }
+    .alert .alert-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: .05rem; }
+    .alert-warn  { background: var(--gold-lt);  border-left: 4px solid var(--gold); }
+    .alert-risk  { background: var(--red-lt);   border-left: 4px solid var(--red); }
+    .alert-info  { background: var(--blue-lt);  border-left: 4px solid var(--blue); }
+    .alert-ok    { background: var(--green-lt); border-left: 4px solid var(--green); }
+
+    /* ── Gate progress ── */
+    .gate-flow {
+      display: flex;
+      gap: 0;
+      margin: 1.2rem 0;
+      overflow-x: auto;
+    }
+    .gate-step {
+      flex: 1;
+      min-width: 120px;
+      text-align: center;
+      position: relative;
+    }
+    .gate-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-top: 16px solid transparent;
+      border-bottom: 16px solid transparent;
+      border-left: 18px solid var(--red);
+      z-index: 1;
+    }
+    .gate-box {
+      background: var(--red);
+      color: white;
+      border-radius: 6px;
+      margin: 0 4px;
+      padding: .6rem .5rem;
+    }
+    .gate-box .gate-label { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; opacity: .85; }
+    .gate-box .gate-name  { font-size: .82rem; font-weight: 700; margin-top: .2rem; }
+    .gate-box.g0 { background: #7F8C8D; }
+    .gate-box.g1 { background: #2471A3; }
+    .gate-box.g2 { background: #1E8449; }
+    .gate-box.g3 { background: #D4AC0D; color: #333; }
+    .gate-box.g4 { background: #C0392B; }
+
+    /* ── Disposition outcomes ── */
+    .disposition-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: .85rem;
+      margin: .75rem 0;
+    }
+    .disp-card {
+      border-radius: 8px;
+      padding: .85rem 1rem;
+      font-size: .84rem;
+    }
+    .disp-card strong { display: block; font-size: .9rem; margin-bottom: .3rem; }
+    .disp-accepted  { background: var(--green-lt); border: 1px solid #A9DFBF; }
+    .disp-cond      { background: var(--blue-lt);  border: 1px solid #AED6F1; }
+    .disp-rejected  { background: var(--red-lt);   border: 1px solid #F1948A; }
+    .disp-dev       { background: var(--gold-lt);  border: 1px solid #F9E79F; }
+
+    /* ── Risk matrix ── */
+    .risk-item {
+      background: white;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 1rem 1.2rem;
+      margin-bottom: .85rem;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      box-shadow: var(--shadow);
+    }
+    .risk-num {
+      background: var(--red);
+      color: white;
+      border-radius: 50%;
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900;
+      font-size: .85rem;
+      flex-shrink: 0;
+    }
+    .risk-body h4 { font-size: .9rem; font-weight: 700; color: var(--red); margin-bottom: .35rem; }
+    .risk-body p  { font-size: .84rem; }
+    .risk-rec { margin-top: .4rem; font-size: .82rem; color: var(--green); font-style: italic; }
+
+    /* ── Rule rows ── */
+    .rule-item {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: .85rem;
+      align-items: flex-start;
+    }
+    .rule-tag {
+      background: var(--blue);
+      color: white;
+      border-radius: 5px;
+      padding: .25rem .55rem;
+      font-size: .72rem;
+      font-weight: 800;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .rule-text { font-size: .87rem; }
+
+    /* ── Code block ── */
+    .code-block {
+      background: #1E2532;
+      color: #ABB2BF;
+      border-radius: 8px;
+      padding: 1.1rem 1.3rem;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: .8rem;
+      line-height: 1.7;
+      overflow-x: auto;
+      margin: .75rem 0;
+    }
+    .code-key   { color: #E06C75; }
+    .code-str   { color: #98C379; }
+    .code-arr   { color: #61AFEF; }
+    .code-comment { color: #5C6370; font-style: italic; }
+
+    /* ── Scrollspy indicator ── */
+    .progress-bar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 3px;
+      background: var(--gold);
+      z-index: 200;
+      width: 0%;
+      transition: width .1s;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      font-size: .75rem;
+      color: var(--muted);
+      padding: 2rem 1rem 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Print ── */
+    @media print {
+      header, nav, .progress-bar { position: static; }
+      .section-panel { display: block !important; }
+      .accordion-body { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="header-inner">
+    <div class="logo-mark">
+      <!-- simple wellhead icon -->
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="13" y="2" width="6" height="20" fill="#C0392B" rx="2"/>
+        <rect x="8" y="20" width="16" height="4" fill="#C0392B" rx="1"/>
+        <rect x="4" y="24" width="24" height="5" fill="#96281B" rx="2"/>
+        <rect x="6" y="10" width="4" height="2" fill="#96281B" rx="1"/>
+        <rect x="22" y="10" width="4" height="2" fill="#96281B" rx="1"/>
+      </svg>
+    </div>
+    <div class="header-title">
+      <h1>Cactus Wellhead (NYSE: WHD) — MTR Intake &amp; SOP Guide</h1>
+      <p>CMS Spec Validation &amp; Approved Provider Correlation &nbsp;·&nbsp; Generated 2026-03-02 &nbsp;·&nbsp; Effective 2026-03-05</p>
+    </div>
+    <button onclick="window.print()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);color:white;padding:.45rem .9rem;border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:700;">
+      ⎙ Print / PDF
+    </button>
+  </div>
+  <nav class="top-nav">
+    <button class="active" onclick="showSection('overview', this)">Overview</button>
+    <button onclick="showSection('business', this)">§1 Business Context</button>
+    <button onclick="showSection('workflow', this)">§2 Intake Workflow</button>
+    <button onclick="showSection('sop', this)">§3 SOP Deep Dive</button>
+    <button onclick="showSection('crosswalk', this)">§4 CMS Crosswalk</button>
+    <button onclick="showSection('risks', this)">§5 Key Risks</button>
+    <button onclick="showSection('rules', this)">§6 Enforcement Rules</button>
+    <button onclick="showSection('artifact', this)">§7 JSON Artifact</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ════════════════════════════════════════════════
+     OVERVIEW
+════════════════════════════════════════════════ -->
+<section id="overview" class="section-panel active">
+  <p class="page-title">Executive Overview</p>
+  <p class="page-subtitle">MTR Intake, CMS Spec Validation &amp; Approved Provider Correlation</p>
+
+  <div class="kpi-grid">
+    <div class="kpi-tile">
+      <div class="kpi-label">Document Type</div>
+      <div class="kpi-value" style="font-size:1rem;">SOP Guide</div>
+    </div>
+    <div class="kpi-tile gold">
+      <div class="kpi-label">CMS Specs Covered</div>
+      <div class="kpi-value">6</div>
+    </div>
+    <div class="kpi-tile blue">
+      <div class="kpi-label">Validation Gates</div>
+      <div class="kpi-value">5 (0–4)</div>
+    </div>
+    <div class="kpi-tile green">
+      <div class="kpi-label">SOP Rules</div>
+      <div class="kpi-value">8</div>
+    </div>
+    <div class="kpi-tile" style="border-left-color:var(--red)">
+      <div class="kpi-label">Key Risks</div>
+      <div class="kpi-value">5</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">i</span> Purpose</div>
+    <p style="font-size:.9rem;">This guide captures the structured analysis of Cactus Wellhead's supplier engagement model for <strong>MTR (Mill Test Report) intake validation</strong>. It correlates Cactus Master Specifications (CMS) to approved process providers and provides a machine-importable JSON crosswalk matrix for use in the MTR validation engine.</p>
+  </div>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title"><span class="icon">✓</span> Document Sections</div>
+      <ol class="styled" style="margin-top:.3rem;">
+        <li><strong>Business Context</strong> — who Cactus WHD is and how they win</li>
+        <li><strong>Intake Workflow</strong> — queues, gates, suppliers, file types</li>
+        <li><strong>SOP Deep Dive</strong> — CMS resolution and provider matching</li>
+        <li><strong>CMS Crosswalk</strong> — spec-to-process code mapping table</li>
+        <li><strong>Key Risks</strong> — five identified risks requiring action</li>
+        <li><strong>Enforcement Rules</strong> — eight binding SOP rules</li>
+        <li><strong>JSON Artifact</strong> — machine-readable crosswalk reference</li>
+      </ol>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">!</span> Governing Standards</div>
+      <ul class="styled" style="margin-top:.3rem;">
+        <li><strong>API 6A / ISO 10423</strong> — PSL, temperature class, material class</li>
+        <li><strong>NACE MR0175 / ISO 15156</strong> — sour service compliance</li>
+        <li><strong>Customer EPS</strong> — engineering performance specs (flowdown)</li>
+        <li><strong>Internal CMS</strong> — Cactus Master Specifications (source of truth)</li>
+        <li><strong>API 6ACRA</strong> — CRA pressure-control equipment (Alloy 718)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">⚑</span> The "Big Five" Controlled Characteristics</div>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:.75rem;">Required on all pressure-bearing material MTRs</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem;">
+      <div style="background:var(--red-lt);border-radius:8px;padding:.8rem 1rem;text-align:center;">
+        <div style="font-size:1.5rem;font-weight:900;color:var(--red);">1</div>
+        <div style="font-size:.82rem;font-weight:700;margin-top:.2rem;">Chemical Composition</div>
+        <div style="font-size:.75rem;color:var(--muted);">Chemistry gating</div>
+      </div>
+      <div style="background:#EBF5FB;border-radius:8px;padding:.8rem 1rem;text-align:center;">
+        <div style="font-size:1.5rem;font-weight:900;color:var(--blue);">2</div>
+        <div style="font-size:.82rem;font-weight:700;margin-top:.2rem;">Mechanical Properties</div>
+        <div style="font-size:.75rem;color:var(--muted);">YS, UTS, RA, elongation</div>
+      </div>
+      <div style="background:var(--gold-lt);border-radius:8px;padding:.8rem 1rem;text-align:center;">
+        <div style="font-size:1.5rem;font-weight:900;color:#7D6608;">3</div>
+        <div style="font-size:.82rem;font-weight:700;margin-top:.2rem;">Charpy Impact (CVN)</div>
+        <div style="font-size:.75rem;color:var(--muted);">Method, temp, orientation</div>
+      </div>
+      <div style="background:var(--green-lt);border-radius:8px;padding:.8rem 1rem;text-align:center;">
+        <div style="font-size:1.5rem;font-weight:900;color:var(--green);">4</div>
+        <div style="font-size:.82rem;font-weight:700;margin-top:.2rem;">Heat Treatment</div>
+        <div style="font-size:.75rem;color:var(--muted);">Temp, soak, quench, temper</div>
+      </div>
+      <div style="background:#F4F6F7;border-radius:8px;padding:.8rem 1rem;text-align:center;border:1px solid var(--border);">
+        <div style="font-size:1.5rem;font-weight:900;color:var(--gray);">5</div>
+        <div style="font-size:.82rem;font-weight:700;margin-top:.2rem;">Hardness</div>
+        <div style="font-size:.75rem;color:var(--muted);">Scale, location, NACE caps</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════
+     SECTION 1 — BUSINESS CONTEXT
+════════════════════════════════════════════════ -->
+<section id="business" class="section-panel">
+  <p class="page-title">§1 — Cactus Wellhead Business Context</p>
+  <p class="page-subtitle">NYSE: WHD &nbsp;·&nbsp; Surface Pressure Control &amp; Spoolable Pipe Technologies</p>
+
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title"><span class="icon">🏢</span> Company Overview</div>
+      <p style="font-size:.87rem;">Cactus Wellhead (Cactus, Inc.) is an equipment and field-services business focused on <strong>surface pressure control</strong> across the full well lifecycle — drilling, completion/fracking, and production. A second business leg covers spoolable pipe technologies (FlexSteel).</p>
+      <div class="alert alert-info" style="margin-top:1rem;">
+        <span class="alert-icon">🌐</span>
+        <div><strong>Cactus International (Jan 2026):</strong> Acquired 65% of Baker Hughes' surface pressure control business, significantly expanding international footprint — particularly in the Middle East NOC/IOC aftermarket segment.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="icon">🏆</span> How the Business Wins</div>
+      <ul class="styled" style="margin-top:.3rem;">
+        <li>Cycle time and safety in pressure control execution</li>
+        <li>Standardization and interchangeability of components across basins</li>
+        <li>Service density proximity to key shale basins</li>
+        <li>International mix to smooth regional activity cycles</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">⚙</span> Core Product &amp; Service Lines</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Product / Service</th>
+            <th>Notable Items</th>
+            <th>Well Phase</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Wellhead Systems</strong></td>
+            <td>SafeDrill® line</td>
+            <td><span class="badge badge-blue">Drilling</span></td>
+          </tr>
+          <tr>
+            <td><strong>Frac Equipment</strong></td>
+            <td>Frac stacks, zipper manifolds</td>
+            <td><span class="badge badge-gold">Completion</span></td>
+          </tr>
+          <tr>
+            <td><strong>Production Trees</strong></td>
+            <td>Surface equipment &amp; related</td>
+            <td><span class="badge badge-green">Production</span></td>
+          </tr>
+          <tr>
+            <td><strong>Field Services</strong></td>
+            <td>Installs, swaps, maintenance, frac ops</td>
+            <td><span class="badge badge-gray">All Phases</span></td>
+          </tr>
+          <tr>
+            <td><strong>Spoolable Pipe</strong></td>
+            <td>FlexSteel technologies</td>
+            <td><span class="badge badge-gray">All Phases</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════
+     SECTION 2 — INTAKE WORKFLOW
+════════════════════════════════════════════════ -->
+<section id="workflow" class="section-panel">
+  <p class="page-title">§2 — Supplier Engagement &amp; MTR Intake Workflow</p>
+  <p class="page-subtitle">Unified intake process across customer-supplied and supplier-shipped material</p>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">→</span> Validation Gate Flow</div>
+    <div class="gate-flow">
+      <div class="gate-step">
+        <div class="gate-box g0">
+          <div class="gate-label">Gate 0</div>
+          <div class="gate-name">Packet Completeness</div>
+        </div>
+      </div>
+      <div class="gate-step">
+        <div class="gate-box g1">
+          <div class="gate-label">Gate 1</div>
+          <div class="gate-name">Identity &amp; Traceability</div>
+        </div>
+      </div>
+      <div class="gate-step">
+        <div class="gate-box g2">
+          <div class="gate-label">Gate 2/3</div>
+          <div class="gate-name">Technical Validation</div>
+        </div>
+      </div>
+      <div class="gate-step">
+        <div class="gate-box g3">
+          <div class="gate-label">Gate 4</div>
+          <div class="gate-name">Record Lock</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Accordions for each gate/step -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      Step 1 — Packet Receipt &amp; Case Creation <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <ul class="styled">
+        <li>Create an <strong>MTR Validation Case</strong> record: counterparty, PO/line, part, heat/lot, spec/grade, material form.</li>
+        <li>Ingest all attachments: PDF (text-based, scanned/OCR, hybrid, portfolio), DOCX/XLSX, images (JPG/PNG/TIFF/HEIC), ZIP bundles, MSG/EML email packages.</li>
+        <li>Malware scan, SHA-256 hash, and archive original files before any processing.</li>
+        <li>Normalize: OCR for scanned PDFs, rotation/deskew for images, table extraction.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      Gate 0 — Packet Completeness Check <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;">Minimum required data before technical review proceeds. If <strong>incomplete</strong>: return as "incomplete packet" with specific punch list — do <em>not</em> begin technical validation.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Required Field</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td>Heat / Cast Number</td><td>Must match PO and physical tag</td></tr>
+            <tr><td>PO Number and Line Item</td><td>—</td></tr>
+            <tr><td>Part or Material Identifier</td><td>—</td></tr>
+            <tr><td>Governing Spec / Grade + Revision</td><td>—</td></tr>
+            <tr><td>Chemistry Table</td><td>Per applicable CMS</td></tr>
+            <tr><td>Mechanical Properties</td><td>Tensile / yield / elongation / RA</td></tr>
+            <tr><td>Charpy Results</td><td>When required by PO / EPS</td></tr>
+            <tr><td>Heat Treatment Actuals</td><td>When required</td></tr>
+            <tr><td>Hardness Results</td><td>Method, location, values</td></tr>
+            <tr><td>NDT Certificate Reference</td><td>When applicable</td></tr>
+            <tr><td>Test Lab / Provider Identification</td><td>Must be site-level identifiable</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      Gate 1 — Identity &amp; Traceability <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <ul class="styled" style="margin-bottom:.75rem;">
+        <li>Confirm heat number on MTR matches: PO, receiving record, physical tag.</li>
+        <li>Confirm product form and dimensions match PO + receiving inspection.</li>
+        <li>Confirm spec/grade matches PO line and any customer flowdown.</li>
+      </ul>
+      <p style="font-weight:700;margin-bottom:.4rem;">Common rejection reasons at Gate 1:</p>
+      <div class="alert alert-risk">
+        <span class="alert-icon">⚠</span>
+        <ul class="styled">
+          <li>Heat number mismatch or cross-reference without certification</li>
+          <li>Wrong grade or trim level (e.g., AISI 4130 submitted when 4140 required)</li>
+          <li>Multiple heats aggregated without clear segregation and individual certs</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">👥</span> Queue-Based Ownership Model</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Queue</th><th>Responsible Party</th><th>Function</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-gray">Intake / Doc Control</span></td>
+            <td>Receiving Admin / QMS</td>
+            <td>Packet completeness (Gate 0)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-blue">Receiving QC</span></td>
+            <td>Inspector / QC Tech</td>
+            <td>Identity + traceability (Gate 1)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-gold">QE / Metallurgy</span></td>
+            <td>Quality Engineer</td>
+            <td>Technical validation (Gates 2/3)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-red">Quality Manager</span></td>
+            <td>QE or QM</td>
+            <td>Deviation disposition</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-green">Records Control</span></td>
+            <td>Doc Control</td>
+            <td>Final lock + archive (Gate 4)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">📄</span> MTR File Format Handling</div>
+    <div class="two-col" style="margin-top:.5rem;">
+      <div>
+        <p style="font-weight:700;font-size:.85rem;margin-bottom:.5rem;">PDF Types</p>
+        <ul class="styled">
+          <li><strong>Text-based PDFs</strong> — fully searchable (best case)</li>
+          <li><strong>Scanned PDFs</strong> — image-only, require OCR</li>
+          <li><strong>Hybrid PDFs</strong> — OCR text layer may have artifacts</li>
+          <li><strong>PDF Portfolios</strong> — multiple certs in one container</li>
+        </ul>
+      </div>
+      <div>
+        <p style="font-weight:700;font-size:.85rem;margin-bottom:.5rem;">Other Formats</p>
+        <ul class="styled">
+          <li><strong>DOCX</strong> — certificate templates with signature blocks</li>
+          <li><strong>XLSX</strong> — chemistry/tensile/impact tables</li>
+          <li><strong>Images</strong> — JPG/PNG/TIFF/HEIC (camera, scanner)</li>
+          <li><strong>Packages</strong> — ZIP bundles, MSG/EML email attachments</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">⊞</span> Disposition Outcomes</div>
+    <div class="disposition-grid">
+      <div class="disp-card disp-accepted">
+        <strong>✅ ACCEPTED</strong>
+        All Gates pass, records locked to validated case.
+      </div>
+      <div class="disp-card disp-cond">
+        <strong>🔵 ACCEPTED WITH CONDITIONS</strong>
+        Minor open items with defined resolution path.
+      </div>
+      <div class="disp-card disp-rejected">
+        <strong>❌ REJECTED</strong>
+        Material fails spec limits or traceability cannot be established.
+      </div>
+      <div class="disp-card disp-dev">
+        <strong>⚠ DEVIATION REQUIRED</strong>
+        Out-of-spec but potentially acceptable via SDR/waiver process.
+      </div>
+    </div>
+    <div class="alert alert-warn" style="margin-top:.5rem;">
+      <span class="alert-icon">⚠</span>
+      <div><strong>No Silent Substitutions:</strong> Any change after PO placement requires a formal deviation (SDR/EPS waiver) with Quality signature.</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════
+     SECTION 3 — SOP DEEP DIVE
+════════════════════════════════════════════════ -->
+<section id="sop" class="section-panel">
+  <p class="page-title">§3 — SOP Deep Dive: CMS Specs + Provider Correlation</p>
+  <p class="page-subtitle">Five-step governing sequence applied to every MTR validation case</p>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">1</span> Step 1 — Resolve Applicable CMS Set</div>
+    <p style="font-size:.87rem;margin-bottom:.75rem;">Resolve CMS set from PO + material/part mapping:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Example</th><th>Material</th><th>CMS Stack</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>A</td>
+            <td>4140 Forgings</td>
+            <td><span class="badge badge-blue">CMS-002</span> + <span class="badge badge-blue">CMS-107</span> <em>(+ CMS-004 if Charpy required)</em></td>
+          </tr>
+          <tr>
+            <td>B</td>
+            <td>Alloy 718</td>
+            <td><span class="badge badge-blue">CMS-002</span> + <span class="badge badge-red">CMS-305</span> <em>(+ CMS-004 for Charpy)</em></td>
+          </tr>
+          <tr>
+            <td>C</td>
+            <td>17-4PH NACE</td>
+            <td><span class="badge badge-blue">CMS-002</span> + <span class="badge badge-gold">CMS-303</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">2</span> Step 2 — Extract Test Line Items</div>
+    <ul class="styled">
+      <li>Test parameter name and value</li>
+      <li>Test method and revision</li>
+      <li>Provider (lab/HT/NDT supplier name + site)</li>
+      <li>Equipment calibration reference (when applicable)</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">3</span> Step 3 — Match Provider to Approved List</div>
+    <div class="alert alert-risk">
+      <span class="alert-icon">⚠</span>
+      <div><strong>Site-level match required.</strong> Company name alone is NOT sufficient. Match on: supplier_name + site_city/address + process_code + approval_status = ACTIVE.</div>
+    </div>
+    <ul class="styled" style="margin-top:.5rem;">
+      <li>If notes contain <strong>"SINGLE SOURCE — risk review required"</strong>: route to risk review queue before acceptance.</li>
+      <li>If notes contain <strong>"ADDRESS NEEDS MANUAL REVIEW"</strong>: route to Quality hold for manual verification.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">4</span> Step 4 — Gate 2/3 Technical Validation (CTQs)</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>CTQ (Critical to Quality)</th><th>What Is Checked</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Chemistry</strong></td><td>Element vs. min/max table in CMS</td></tr>
+          <tr><td><strong>Mechanicals</strong></td><td>YS, UTS, elongation, RA vs. grade limits</td></tr>
+          <tr><td><strong>Charpy (CVN)</strong></td><td>Temperature, specimen, orientation, avg/individual vs. CMS-004 rules</td></tr>
+          <tr><td><strong>Heat Treatment</strong></td><td>Austenitizing temp, quench media, temper temp, soak time vs. HTP</td></tr>
+          <tr><td><strong>Hardness</strong></td><td>Scale (Rockwell/Brinell/Vickers), location, method vs. CMS rule</td></tr>
+          <tr><td><strong>NDE</strong></td><td>Method, acceptance class, applicable CNT-* code authorized</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">5</span> Step 5 — Gate 4: Record Lock</div>
+    <p style="font-size:.87rem;margin-bottom:.6rem;">Link accepted case to all of the following:</p>
+    <ul class="styled">
+      <li>CMS revision (exact) + cutoff/applicability date</li>
+      <li>Approved provider ID(s) matched</li>
+      <li>Heat/lot + PO line</li>
+      <li>Disposition outcome + dispositioner identity + date</li>
+    </ul>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════
+     SECTION 4 — CMS CROSSWALK
+════════════════════════════════════════════════ -->
+<section id="crosswalk" class="section-panel">
+  <p class="page-title">§4 — CMS-to-Approved-Process Crosswalk</p>
+  <p class="page-subtitle">Narrative details and process code summary table for each CMS specification</p>
+
+  <!-- CMS-002 -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      CMS-002 &nbsp;·&nbsp; Base Requirements (Forgings &amp; Wrought Products) <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;"><strong>Scope:</strong> Foundational material requirements applied to all forgings, tubulars, bars, and mill shapes procured for pressure-bearing components. <strong>Always active.</strong></p>
+      <div class="two-col">
+        <div>
+          <p style="font-weight:700;font-size:.84rem;">Mandatory Process Codes</p>
+          <ul class="styled"><li><code>LAB-001</code> — accredited lab for chemistry, tensile, Charpy, hardness</li><li><code>CHT-GEN</code> — general heat treat supplier capability</li></ul>
+        </div>
+        <div>
+          <p style="font-weight:700;font-size:.84rem;">Conditional Codes (per PO/EPS)</p>
+          <ul class="styled"><li><code>CNT-002, CNT-003, CNT-004, CNT-005, CNT-007</code> — NDT method as flowed</li></ul>
+        </div>
+      </div>
+      <div class="alert alert-warn" style="margin-top:.75rem;">
+        <span class="alert-icon">📌</span>
+        <div><strong>SOP Note:</strong> CMS-002 takes precedence over any conflicting requirement in a material-specific CMS. CMS-002-1 applies specifically to API 6A PSL-3 75K yield bodies over 1,000 lbs during heat treating.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CMS-004 -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      CMS-004 &nbsp;·&nbsp; Charpy / CVN Impact Framework <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;"><strong>Scope:</strong> Charpy test parameters, sub-size correlation rules, and acceptance logic. Applied with CMS-002 and material-specific CMS whenever Charpy is required by PO or EPS.</p>
+      <p style="font-weight:700;font-size:.84rem;">Mandatory Process Codes</p>
+      <ul class="styled" style="margin-bottom:.75rem;"><li><code>LAB-001</code> — must be explicitly scoped for CVN impact testing</li></ul>
+      <div class="alert alert-warn">
+        <span class="alert-icon">⚠</span>
+        <div><strong>SOP Note:</strong> Do NOT assume LAB-001 approval for tensile testing automatically covers Charpy. Verify impact testing capability is explicitly listed in the approved scope for the specific lab site.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CMS-107 -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      CMS-107 &nbsp;·&nbsp; 4140 Low-Alloy Steel <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;"><strong>Scope:</strong> Requirements for AISI 4140 class — typically the most common material family in pressure-control forgings. Tight chemistry and HT window controls.</p>
+      <p style="font-weight:700;font-size:.84rem;margin-bottom:.4rem;">Required MTR Evidence</p>
+      <ul class="styled" style="margin-bottom:.75rem;">
+        <li>Chemistry vs. CMS-107 element tables</li>
+        <li>Q&amp;T route actuals (austenitize/quench/temper temps, soak, quench media)</li>
+        <li>Tensile + impact + hardness results</li>
+        <li>HT furnace record reference</li>
+      </ul>
+      <div class="alert alert-warn">
+        <span class="alert-icon">📌</span>
+        <div><strong>SOP Note:</strong> Hardness caps apply. For sour-service (NACE/ISO 15156) flowdowns, validate maximum hardness limits against NACE tables in addition to CMS-107 limits.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CMS-118 -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      CMS-118 &nbsp;·&nbsp; 4340 Low-Alloy Steel <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;"><strong>Scope:</strong> Requirements for AISI 4340 class — higher hardenability than 4140. More sensitive to section size and quench media control.</p>
+      <p style="font-weight:700;font-size:.84rem;margin-bottom:.4rem;">Required MTR Evidence</p>
+      <ul class="styled" style="margin-bottom:.75rem;">
+        <li>Chemistry, HT window actuals</li>
+        <li>Tensile / impact / hardness</li>
+        <li>Heat / lot traceability</li>
+      </ul>
+      <div class="alert alert-warn">
+        <span class="alert-icon">📌</span>
+        <div><strong>SOP Note:</strong> Confirm HT supplier approval is at the site level — heavy section 4340 quench capability is site-specific. Company-level approval alone is insufficient.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CMS-303 -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      CMS-303 &nbsp;·&nbsp; 17-4PH Precipitation Hardening Stainless (NACE Route) <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;"><strong>Scope:</strong> Requirements for 17-4PH (UNS S17400) including corrosion-resistant and NACE-compliant aging condition routes.</p>
+      <p style="font-weight:700;font-size:.84rem;margin-bottom:.4rem;">Required MTR Evidence</p>
+      <ul class="styled" style="margin-bottom:.75rem;">
+        <li>Full chemistry including Cu and Nb/Cb</li>
+        <li>Ferrite / microstructure evaluation (where required)</li>
+        <li>Aging condition actuals (H900/H1025/H1150-M etc.)</li>
+        <li>Hardness (method + limits), traceability</li>
+      </ul>
+      <div class="alert alert-risk">
+        <span class="alert-icon">⚠</span>
+        <div><strong>SOP Note:</strong> Validate the aging condition on the MTR matches the PO/EPS requirement exactly. For NACE route: verify hardness cap compliance and modified chemistry limits. Ferrite and delta ferrite controls may be required — confirm LAB-001 microscopy and metallography scope at the site level.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CMS-305 -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      CMS-305 &nbsp;·&nbsp; Alloy 718 / API 6ACRA / NACE Route &nbsp;<span class="badge badge-red">Highest Scrutiny</span> <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;"><strong>Scope:</strong> Requirements for UNS N07718 (Alloy 718) following API 6ACRA requirements for CRA pressure-control equipment. Highest-scrutiny spec in the CMS suite.</p>
+      <p style="font-weight:700;font-size:.84rem;margin-bottom:.4rem;">Required MTR Evidence</p>
+      <ul class="styled" style="margin-bottom:.75rem;">
+        <li>Full chemistry (Nb, Mo, Ti, Al trace elements included)</li>
+        <li>Charpy impact results, hardness (method, location, limits)</li>
+        <li>Heat treat route actuals (solution anneal + double age temps and soak times)</li>
+        <li>Macroetch evaluation, microstructure phase examination (deleterious phase check)</li>
+        <li>API 6ACRA traceability artifacts</li>
+      </ul>
+      <div class="alert alert-risk">
+        <span class="alert-icon">🔴</span>
+        <div>
+          <strong>SOP Note:</strong> Confirm LAB-001 scope explicitly covers: ASTM A604 (macroetch), ASTM E1181 (grain size), metallography, and phase evaluation. Standard mechanical lab scope does NOT cover these.
+          <br/><br/>API 6ACRA traceability chain must be <strong>unbroken</strong> from melt source through finished forging form.
+          <br/>Verify CHT-GEN and CNT-005 are not single-source for this material route.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COATING -->
+  <div class="accordion">
+    <button class="accordion-btn" onclick="toggleAccordion(this)">
+      COATING / PLATING &nbsp;·&nbsp; Surface Treatment Requirements <span class="chevron">▼</span>
+    </button>
+    <div class="accordion-body">
+      <p style="margin-bottom:.75rem;"><strong>Scope:</strong> Coating and plating process requirements when specified by PO or EPS. Only activated for parts with an explicit coating or plating requirement.</p>
+      <ul class="styled" style="margin-bottom:.75rem;">
+        <li>Mandatory codes: <code>CCS-608, CCS-609, CCS-610, CCS-612, CST-800, CST-801, CST-811</code></li>
+        <li>Required evidence: coating/plating process certs, thickness measurements, process parameters, lot traceability to part/PO line</li>
+      </ul>
+      <div class="alert alert-risk">
+        <span class="alert-icon">⚠</span>
+        <div><strong>SOP Note:</strong> <strong>CCS-612</strong> and <strong>CST-811</strong> are flagged as single-source — require risk review before acceptance. Any sub-tier used for outsourced coating/plating must also appear in the Cactus approved provider list.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary table -->
+  <div class="card" style="margin-top:1.25rem;">
+    <div class="card-title"><span class="icon">≡</span> CMS Crosswalk Summary Table</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>CMS Spec</th>
+            <th>Mandatory Codes</th>
+            <th>Conditional Codes (Trigger)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-blue">CMS-002</span></td>
+            <td><code>LAB-001, CHT-GEN</code></td>
+            <td><code>CNT-002/003/004/005/007</code> (NDT per PO/EPS)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-blue">CMS-004</span></td>
+            <td><code>LAB-001</code></td>
+            <td>— (applied when Charpy required)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-gray">CMS-107</span></td>
+            <td><code>LAB-001, CHT-GEN</code></td>
+            <td><code>CNT-005</code>, CNT-* (per flowdown)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-gray">CMS-118</span></td>
+            <td><code>LAB-001, CHT-GEN</code></td>
+            <td><code>CNT-005</code>, CNT-* (per flowdown)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-gold">CMS-303</span></td>
+            <td><code>LAB-001, CHT-GEN</code></td>
+            <td><code>CNT-002/003/004/005/007</code> (per PO/EPS)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-red">CMS-305</span></td>
+            <td><code>LAB-001, CHT-GEN</code></td>
+            <td><code>CNT-005</code>, CNT-* (per spec)</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-gray">COATING/PLATING</span></td>
+            <td><code>CCS-608/609/610/612, CST-800/801/811</code></td>
+            <td>— (activated only when PO requires)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════
+     SECTION 5 — KEY RISKS
+════════════════════════════════════════════════ -->
+<section id="risks" class="section-panel">
+  <p class="page-title">§5 — Key Risks Identified</p>
+  <p class="page-subtitle">Five risks requiring immediate action or standing watch items</p>
+
+  <div class="alert alert-warn">
+    <span class="alert-icon">⚠</span>
+    <div>These risks were identified during SOP analysis. Each must be tracked in Quality risk register and assigned an owner.</div>
+  </div>
+
+  <div class="risk-item">
+    <div class="risk-num">1</div>
+    <div class="risk-body">
+      <h4>Incomplete Address Records in Approved Provider List</h4>
+      <p>Multiple provider entries are flagged "ADDRESS NEEDS MANUAL REVIEW." These cannot be validated at the site level until address data is confirmed.</p>
+      <p class="risk-rec">→ Recommendation: Quarantine these records. Do not auto-approve provider matches against entries without a verified site address until manual review is complete.</p>
+    </div>
+  </div>
+
+  <div class="risk-item">
+    <div class="risk-num">2</div>
+    <div class="risk-body">
+      <h4>Single-Source Process Risks</h4>
+      <p>The following process codes have only a single approved provider:</p>
+      <div style="margin:.5rem 0;">
+        <span class="badge badge-red">CCS-612</span>&nbsp;Coating &nbsp;
+        <span class="badge badge-red">CHT-100</span>&nbsp;Heat Treat (specific capability) &nbsp;
+        <span class="badge badge-red">CST-811</span>&nbsp;Surface Treatment &nbsp;
+        <span class="badge badge-red">CNT-007</span>&nbsp;NDT Method
+      </div>
+      <p class="risk-rec">→ Recommendation: Any order requiring these services must trigger a supply chain risk review. Initiate a second-source qualification plan for each.</p>
+    </div>
+  </div>
+
+  <div class="risk-item">
+    <div class="risk-num">3</div>
+    <div class="risk-body">
+      <h4>Company-Level vs. Site-Level Approval Gaps</h4>
+      <p>Parent-company HT delegations exist in the approved provider list. The SOP must enforce that approval is validated at the individual operating site (street address + city), not assumed from a corporate parent entry.</p>
+      <p class="risk-rec">→ Especially critical for <strong>CHT-GEN</strong> (heat treat) and <strong>LAB-001</strong> (testing lab).</p>
+    </div>
+  </div>
+
+  <div class="risk-item">
+    <div class="risk-num">4</div>
+    <div class="risk-body">
+      <h4>Lab Scope Coverage Gaps (CMS-303 &amp; CMS-305)</h4>
+      <p>LAB-001 approval may be granted for standard mechanical testing (tensile/Charpy/hardness) without explicitly covering:</p>
+      <ul class="styled" style="margin:.4rem 0 .4rem 1rem;">
+        <li>Macroetch (ASTM A604)</li>
+        <li>Grain size (ASTM E1181)</li>
+        <li>Metallographic phase evaluation (deleterious phase detection)</li>
+      </ul>
+      <p class="risk-rec">→ Required by CMS-305 and conditionally by CMS-303. Confirm scope certificate before routing Alloy 718 or 17-4PH NACE MTRs to any lab.</p>
+    </div>
+  </div>
+
+  <div class="risk-item">
+    <div class="risk-num">5</div>
+    <div class="risk-body">
+      <h4>Missing Provider Match ≠ Auto-Reject</h4>
+      <p>If a provider cannot be matched to the approved list, the correct action is to route to <strong>"Needs Review" (Quality hold)</strong>, not an automatic rejection. The provider may be legitimately approved under a different record or may require a one-time qualification for the specific scope.</p>
+      <p class="risk-rec">→ Ensure the MTR intake system routes unmatched providers to a Quality Engineer review queue rather than triggering an automatic rejection.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════
+     SECTION 6 — ENFORCEMENT RULES
+════════════════════════════════════════════════ -->
+<section id="rules" class="section-panel">
+  <p class="page-title">§6 — SOP Enforcement Rules</p>
+  <p class="page-subtitle">Eight binding rules governing every MTR validation event</p>
+
+  <div class="rule-item">
+    <div class="rule-tag">RULE 1</div>
+    <div class="rule-text"><strong>Provider match is required at the site level.</strong> Required match fields: supplier_name + site address/city + process_code + approval_status = ACTIVE. Company name + process code alone is NOT sufficient.</div>
+  </div>
+  <div class="rule-item">
+    <div class="rule-tag">RULE 2</div>
+    <div class="rule-text"><strong>"ADDRESS NEEDS MANUAL REVIEW" entries trigger Quality hold.</strong> No MTR can be auto-accepted against a provider record with this flag active. Route to Quality Engineer for manual address verification before disposition.</div>
+  </div>
+  <div class="rule-item">
+    <div class="rule-tag">RULE 3</div>
+    <div class="rule-text"><strong>"SINGLE SOURCE — risk review required" entries trigger risk queue.</strong> Add risk review step before final acceptance. Document risk review outcome in MTR Validation Case record.</div>
+  </div>
+  <div class="rule-item">
+    <div class="rule-tag">RULE 4</div>
+    <div class="rule-text"><strong>Test method present but provider code missing or mismatched.</strong> Disposition = "Conditional / Needs Review." Quality Engineer to resolve before final disposition.</div>
+  </div>
+  <div class="rule-item">
+    <div class="rule-tag">RULE 5</div>
+    <div class="rule-text"><strong>All accepted cases must be locked to:</strong> CMS spec + revision + applicability date &nbsp;·&nbsp; Approved provider record ID(s) &nbsp;·&nbsp; Heat/lot number + PO line item &nbsp;·&nbsp; Disposition outcome + dispositioner + disposition date.</div>
+  </div>
+  <div class="rule-item">
+    <div class="rule-tag">RULE 6</div>
+    <div class="rule-text"><strong>No silent changes.</strong> Any change to material, source, process, or test result after PO placement requires a formal SDR (Supplier Deviation Request) or EPS waiver with documented Quality disposition.</div>
+  </div>
+  <div class="rule-item">
+    <div class="rule-tag">RULE 7</div>
+    <div class="rule-text"><strong>CMS-002 always applies.</strong> For any forging or wrought material purchase, CMS-002 is the floor. CMS-004 is applied whenever Charpy is required. Material-specific CMS (107/118/303/305) layers on top. Conflicts resolve to CMS-002.</div>
+  </div>
+  <div class="rule-item">
+    <div class="rule-tag">RULE 8</div>
+    <div class="rule-text"><strong>Approved sub-tier traceability for outsourced processes.</strong> If a primary supplier outsources any process (heat treat, coating, NDT, lab testing) to a sub-tier, that sub-tier must appear in the Cactus approved provider list under the applicable process code and site.</div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════
+     SECTION 7 — JSON ARTIFACT
+════════════════════════════════════════════════ -->
+<section id="artifact" class="section-panel">
+  <p class="page-title">§7 — JSON Matrix Artifact Reference</p>
+  <p class="page-subtitle">Machine-importable crosswalk — file: <code>app-python/data/cms_process_crosswalk.json</code></p>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">{ }</span> Data Structure (per entry)</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>cms_spec</code></td><td>string</td><td>CMS identifier (e.g., "CMS-002")</td></tr>
+          <tr><td><code>material_scope</code></td><td>string</td><td>Plain-English description of material/scope</td></tr>
+          <tr><td><code>mandatory_process_codes</code></td><td>array</td><td>Always-required approved provider codes</td></tr>
+          <tr><td><code>conditional_process_codes</code></td><td>array</td><td>Codes required per PO/EPS flowdown</td></tr>
+          <tr><td><code>conditional_trigger</code></td><td>string</td><td>Describes when conditional codes activate</td></tr>
+          <tr><td><code>typical_mtr_evidence</code></td><td>array</td><td>Required evidence/data fields on MTR</td></tr>
+          <tr><td><code>sop_notes</code></td><td>array</td><td>Enforcement notes and risk flags</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">▶</span> Example Entry (CMS-107)</div>
+    <div class="code-block">
+<span class="code-comment">// cms_process_crosswalk.json — example entry</span>
+{
+  <span class="code-key">"cms_spec"</span>: <span class="code-str">"CMS-107"</span>,
+  <span class="code-key">"material_scope"</span>: <span class="code-str">"AISI 4140 low-alloy steel forgings and wrought products"</span>,
+  <span class="code-key">"mandatory_process_codes"</span>: <span class="code-arr">["LAB-001", "CHT-GEN"]</span>,
+  <span class="code-key">"conditional_process_codes"</span>: <span class="code-arr">["CNT-005"]</span>,
+  <span class="code-key">"conditional_trigger"</span>: <span class="code-str">"CNT-005 required when UT is called out by PO or EPS flowdown"</span>,
+  <span class="code-key">"typical_mtr_evidence"</span>: <span class="code-arr">[
+    "chemistry_vs_cms107_element_table",
+    "qt_route_actuals",
+    "tensile_results",
+    "impact_results",
+    "hardness_results",
+    "ht_furnace_record_reference"
+  ]</span>,
+  <span class="code-key">"sop_notes"</span>: <span class="code-arr">[
+    "Hardness caps apply per CMS-107",
+    "For NACE/ISO 15156 flowdowns: validate max hardness against NACE tables in addition to CMS-107"
+  ]</span>
+}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="icon">⚡</span> Intended Use in Validation Engine</div>
+    <ul class="styled">
+      <li>Load as lookup table in the MTR intake validation engine</li>
+      <li>Resolve applicable entry by <code>cms_spec</code> resolved from PO + material master</li>
+      <li>Drive provider match checks against <code>cms_approved_providers.json</code></li>
+      <li>Drive evidence field completeness checklist per gate</li>
+      <li>Source of truth for SOP appendix and Quality training materials</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  Cactus Wellhead (NYSE: WHD) &nbsp;·&nbsp; MTR Intake SOP Guide &nbsp;·&nbsp; Generated 2026-03-02 &nbsp;·&nbsp; Confidential / Internal Use Only
+</footer>
+
+<script>
+  // ── Section switching ──
+  function showSection(id, btn) {
+    document.querySelectorAll('.section-panel').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelectorAll('.top-nav button').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ── Accordion toggle ──
+  function toggleAccordion(btn) {
+    const body = btn.nextElementSibling;
+    const isOpen = btn.classList.contains('open');
+    // close all in same parent
+    btn.closest('section').querySelectorAll('.accordion-btn.open').forEach(b => {
+      b.classList.remove('open');
+      b.nextElementSibling.classList.remove('open');
+    });
+    if (!isOpen) {
+      btn.classList.add('open');
+      body.classList.add('open');
+    }
+  }
+
+  // ── Progress bar ──
+  window.addEventListener('scroll', () => {
+    const el   = document.documentElement;
+    const pct  = (el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100;
+    document.getElementById('progressBar').style.width = pct + '%';
+  });
+</script>
+</body>
+</html>

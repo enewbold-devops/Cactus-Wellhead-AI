@@ -215,14 +215,3 @@ class PDFProcessor:
             },
             "chunks": chunks_out,
         }
-
-
-'''if __name__ == "__main__":
-    processor = PDFProcessor(output_dir="output")'''
-
-    # Example usage
-    # document, chunks = processor.process("example.pdf")
-    # print(f"Number of chunks: {len(chunks)}")
-    # for i, chunk in enumerate(chunks):
-    #     print(f"\n--- Chunk {i+1} ---")
-    #     print(chunk.text)

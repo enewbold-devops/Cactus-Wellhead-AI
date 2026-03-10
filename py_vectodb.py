@@ -419,6 +419,100 @@ class LanceDBManager:
             logging.error("[vectodb] query_cms_table failed: %s", exc)
             return []
 
+    def query_case_chunks_for_eval(
+        self,
+        case_id: str,
+        query_vector: list[float],
+        semantic_classes: list[str] | None = None,
+        limit: int = 8,
+        min_score: float = 0.0,
+    ) -> list[dict]:
+        """
+        Vector search over a per-case MTR table for the Requirement Evaluator.
+
+        Supports multi-class pre-filtering and returns results with a
+        'vector_score' field (cosine similarity: 1 − distance, range 0–1).
+
+        Args:
+            case_id:          Case UUID.
+            query_vector:     Embedded requirement text (3072 floats).
+            semantic_classes: If provided, restrict to these classes
+                              (e.g. ["chemistry", "mechanical"]).
+            limit:            Max hits to return before score filtering.
+            min_score:        Discard hits below this cosine similarity.
+
+        Returns:
+            List of matching chunk dicts, each extended with 'vector_score'.
+        """
+        try:
+            tbl = self.get_or_create_case_table(case_id)
+            q = tbl.search(query_vector, vector_column_name="embedding")
+            if semantic_classes:
+                quoted = ", ".join(f"'{c}'" for c in semantic_classes)
+                q = q.where(f"semantic_class IN ({quoted})", prefilter=True)
+            results = q.limit(limit).to_list()
+            out = []
+            for row in results:
+                dist = row.pop("_distance", None)
+                score = round(1.0 - float(dist), 4) if dist is not None else None
+                if min_score and score is not None and score < min_score:
+                    continue
+                row["vector_score"] = score
+                out.append(row)
+            return out
+        except Exception as exc:
+            logging.error(
+                "[vectodb] query_case_chunks_for_eval failed case=%s: %s", case_id, exc
+            )
+            return []
+
+    def query_cms_table_for_eval(
+        self,
+        query_vector: list[float],
+        cms_numbers: list[str] | None = None,
+        canonical_section: str | None = None,
+        limit: int = 8,
+        min_score: float = 0.0,
+    ) -> list[dict]:
+        """
+        Vector search over the shared CMS spec chunks table for the Requirement
+        Evaluator. Returns hits with 'vector_score' (cosine similarity 0–1).
+
+        Args:
+            query_vector:      Embedded requirement text (3072 floats).
+            cms_numbers:       If provided, restrict to these CMS specs.
+            canonical_section: If provided, restrict to this section type.
+            limit:             Max hits before score filtering.
+            min_score:         Discard hits below this cosine similarity.
+
+        Returns:
+            List of matching CMS spec chunk dicts, each with 'vector_score'.
+        """
+        try:
+            tbl = self.get_or_create_cms_table()
+            q = tbl.search(query_vector, vector_column_name="embedding")
+            filters: list[str] = []
+            if cms_numbers:
+                quoted = ", ".join(f"'{c}'" for c in cms_numbers)
+                filters.append(f"cms_number IN ({quoted})")
+            if canonical_section:
+                filters.append(f"canonical_section = '{canonical_section}'")
+            if filters:
+                q = q.where(" AND ".join(filters), prefilter=True)
+            results = q.limit(limit).to_list()
+            out = []
+            for row in results:
+                dist = row.pop("_distance", None)
+                score = round(1.0 - float(dist), 4) if dist is not None else None
+                if min_score and score is not None and score < min_score:
+                    continue
+                row["vector_score"] = score
+                out.append(row)
+            return out
+        except Exception as exc:
+            logging.error("[vectodb] query_cms_table_for_eval failed: %s", exc)
+            return []
+
     def get_case_chunks(self, case_id: str) -> list[dict]:
         """
         Return all rows from a per-case table ordered by chunk_index.

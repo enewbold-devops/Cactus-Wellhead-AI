@@ -1,0 +1,302 @@
+{
+  "doc": {
+    "cms_number": "CMS-118",
+    "revision": "B",
+    "effective_date": "12/17/2024",
+    "title": "Revision B",
+    "source_file": "CMS-118.pdf"
+  },
+  "chunks": [
+    {
+      "chunk_id": "CMS-118::(root)::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "(root)"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Cactus Wellhead Material Specification",
+      "canonical_section": "root",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::CMS-118::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "CMS-118"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Revision B \nPage 1 of 2",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::DATE::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "DATE"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "AISI 4340, 125K, Low Alloy Steel NON-NACE",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::B::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "B"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "12/17/2024 \nMaterial Requirement",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Scope::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Scope"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "AISI 4340, 125K Minimum Yield Strength, Low Alloy Steel NON-NACE",
+      "canonical_section": "scope",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Product Forms::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Product Forms"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Bar and Mill Shapes, Ring Forgings, Open and Closed Die Forgings \nGeneral \nRequirements\nCMS-002, Material Requirements for Forgings, Bars and Mill Shapes \nChemical \nComposition \nElement \nComposition Limits \nElement \nComposition Limits \nCarbon \n0.38 \u2013 0.43 \nSilicon \n0.15 - 0.35 \nManganese \n0.60 \u2013 0.80 \nChromium \n0.70 \u2013 0.90 \nPhosphorous \n0.025 Maximum \nMolybdenum \n0.20 - 0.30 \nSulfur \n0.025 Maximum \nNickel \n1.65 \u2013 2.00 \nVanadium \n\u2013 \nIron \nBalance \nMechanical \nProperties \nProperties \nRange \nTensile Strength, psi \n140,000 (965 MPa) Minimum \nYield Strength, psi, 0.2% Offset \n125,000 (862 MPa) Minimum \nElongation in 2\" Gage Length \n16% Minimum \nReduction in Area \n32% Minimum \nBrinell Hardness (kg/sq mm)",
+      "canonical_section": "other",
+      "params": [
+        {
+          "type": "range",
+          "lo": 0.15,
+          "hi": 0.35,
+          "unit": "Manganese",
+          "context": "n Limits \nCarbon \n0.38 \u2013 0.43 \nSilicon \n0.15 - 0.35 \nManganese \n0.60 \u2013 0.80 \nChromium \n0.70 \u2013 0.90 \nPh"
+        },
+        {
+          "type": "range",
+          "lo": 0.2,
+          "hi": 0.3,
+          "unit": "Sulfur",
+          "context": "Phosphorous \n0.025 Maximum \nMolybdenum \n0.20 - 0.30 \nSulfur \n0.025 Maximum \nNickel \n1.65 \u2013 2.00 \nVa"
+        }
+      ]
+    },
+    {
+      "chunk_id": "CMS-118::Melt Practice::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Melt Practice"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Electric furnace process with subsequent vacuum treatment (EFVD). Vacuum induction \nmelting (VIM), vacuum arc remelting (VAR), or Electroslag remelting (ESR)",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Condition::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Condition"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Material shall have an ASTM grain size of #5 or finer and a minimum hot work ratio of \n4:1.",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Heat Treatment::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "General \nMaterial shall be provided in the normalized (optional), quenched and tempered \ncondition.",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Heat Treatment::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Normalize \nAtmos/Media \nTemperature \nTime at Temp \nAir",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::(871\uf0b0C - 927\uf0b0C)::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "(871\uf0b0C - 927\uf0b0C)"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "\u00bd Hr/Inch of Maximum Thru Thickness. \n1 Hour Min \nStill Air Cool to Below 400\uf0b0F (204\uf0b0C) before processing to the next stage.",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Heat Treatment::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "Austenitize \nAtmos/Media \nTemperature \nTime at Temp \nAir",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::(843\uf0b0C - 885\uf0b0C)::text::p1-1",
+      "type": "text",
+      "section_path": [
+        "(843\uf0b0C - 885\uf0b0C)"
+      ],
+      "page_start": 1,
+      "page_end": 1,
+      "text": "\u00bd Hr/Inch of Maximum Thru Thickness. \n1 Hour Min \n Temperature shall be at least 25\uf0b0F less than normalizing temperature",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Heat Treatment::text::p1-2",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 1,
+      "page_end": 2,
+      "text": "Quench \nAtmos/Media\nTime/Time at Temperature \nWater \n100\u00b0F (38\u00b0C) Maximum Before Quenching \n120\u00b0F (49\u00b0C) Maximum at any time during the quench cycle \nPolymer or Oil \nPer the quenchant manufacturer\u2019s standards \nStart temperature for polymer or oil quenchant shall be per \nthe quenchant manufacturer.\nDocument the start and finish temps for quench media.\nCactus Wellhead Material Specification",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::CMS-118::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "CMS-118"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Revision B \nPage 2 of 2",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Heat Treatment::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Temper\nAtmos/Media \nTemperature \nTime at Temp \nAir",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::(621\uf0b0C - 704\uf0b0C)::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "(621\uf0b0C - 704\uf0b0C)"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "3/4 Hr/Inch of Maximum Thru Thickness \n1 Hour Min \n Air cool or faster to room temperature.",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Heat Treatment::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "Heat Treatment"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Continuous \nFurnace \nFor bars with diameters of 8\" (203 mm) or less, continuous furnace heat treatment is an \nacceptable alternative to conventional batch-type heat treatment. \n Parameters \nTime at Temp \nAustenitizing Furnace \nBar temp exiting final zone",
+      "canonical_section": "heat_treatment",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::(843\uf0b0C - 885\uf0b0C)::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "(843\uf0b0C - 885\uf0b0C)"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Austenitizing Furnace \nMin time \n5 minutes (Note)\nWater Spray Quench \nTempering Furnace \nBar temp exiting final zone",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::(621\uf0b0C - 704\uf0b0C)::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "(621\uf0b0C - 704\uf0b0C)"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Tempering Furnace \nMin time \n5 minutes (Note) \nAir cool or faster to room temperature \n\uf0b7\nThe bar travels through several different temperature zones which allows the bar to heat to \nan austenitic state. \n\uf0b7\nPrior to entering the tempering furnace, the bar is spray quenched. Max water temperature \nat start of quench is 100\uf0b0F(38\uf0b0C). \n\uf0b7\nThe tempering furnace zone temps are then selected to produce the required tempering \neffect. \n\uf0b7\nThe length of the furnace and travel speed determined the time spent in the austenitizing and \ntempering furnace and the bar diameter affects the travel speed. \n\uf0b7\nTo attain the required mechanical properties and microstructure, the time in each furnace \nshould produce the same mechanical properties as a conventional quench-and-temper heat \ntreatment. \nPrepared by: \nJosh Stasen \nApproved by: \nBryan Leach \nDate Prepared \nDecember 17, 2024 \nDate Approved: \nDecember 17, 2024",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::Revision History Table::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "Revision History Table"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "Revision\nDate\nDescription",
+      "canonical_section": "revision_history",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::B::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "B"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "12/17/2024\nReduced limit of Phosphorous and Sulfur to .025 max.",
+      "canonical_section": "other",
+      "params": []
+    },
+    {
+      "chunk_id": "CMS-118::A::text::p2-2",
+      "type": "text",
+      "section_path": [
+        "A"
+      ],
+      "page_start": 2,
+      "page_end": 2,
+      "text": "07/29/2021\nInitial release",
+      "canonical_section": "other",
+      "params": []
+    }
+  ]
+}

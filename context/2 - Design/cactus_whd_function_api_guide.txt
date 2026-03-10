@@ -1,6 +1,6 @@
 Cactus WHD — Azure Functions HTTP API Guide
 Document Type: Developer Reference
-Generated: 2026-03-02  Updated: 2026-03-05
+Generated: 2026-03-02  Updated: 2026-03-09
 Function App: function_app.py
 Blob Storage Module: py_azurite_blob_storage.py
 Queue Manager: py_azurite_queue_storage.py
@@ -13,7 +13,7 @@ Vector Store: vectordb_lancedb/ (LanceDB embedded — Azure OpenAI text-embeddin
 OVERVIEW
 ======================================================================
 
-The Cactus WHD Azure Function App exposes six HTTP endpoints backed by
+The Cactus WHD Azure Function App exposes seven HTTP endpoints backed by
 Azure Blob Storage, Azure Queue Storage, Azure OpenAI embeddings, and a local
 LanceDB vector store (or Azurite emulators for storage in local dev).
 
@@ -25,7 +25,7 @@ All responses are:
   Encoding:     UTF-8
   Body format:  JSON array [] or object on success, JSON object {"error":"..."} on failure
 
-HTTP methods supported: GET (routes 1-3, 5-6) and POST (route 4).
+HTTP methods supported: GET (routes 1-3, 5-6) and POST (routes 4, 7).
 
 Two internal Azure Queue trigger functions handle asynchronous processing:
   mtr_intake_processor    — Docling PDF extraction; triggered by mtr-intake-queue
@@ -44,6 +44,8 @@ ROUTES SUMMARY
   4  POST /api/mtr/intake                   POST    Accepts MTR file upload; returns case_id (201)
   5  GET /api/mtr/{case_id}/status          GET     MTR case processing status record (JSON object)
   6  GET /api/mtr/{case_id}/validation      GET     Gate results + validation report (JSON object)
+  7  POST /api/mtr/{case_id}/evaluate       POST    Requirement Evaluator — vector query returns
+                                                    MTR + CMS evidence packets (JSON object)
 
   Internal triggers (not HTTP):
      mtr_intake_processor    — Queue trigger on mtr-intake-queue
@@ -937,6 +939,480 @@ Example — curl
   # -> {"error": "Validation report not yet available for case <id>. Status is currently: complete"}
 
 ======================================================================
+ROUTE 7 — POST /api/mtr/{case_id}/evaluate
+======================================================================
+
+Description:
+  The Requirement Evaluator. Accepts a natural-language requirement string,
+  embeds it using Azure OpenAI text-embedding-3-large (3072 dims), and runs
+  a hybrid (vector + metadata) query against the per-case LanceDB table that
+  was populated by mtr_vectorize_processor.
+
+  Optionally cross-queries the shared cms_spec_chunks LanceDB table to
+  retrieve authoritative CMS rule text alongside MTR evidence chunks.
+
+  Returns fully structured evidence packets — mtr_hits and cms_hits — that
+  are ready to be passed directly to an OpenAI agent or reasoning layer without
+  additional storage reads. The agent is responsible for final pass/fail/review
+  disposition; this endpoint provides only retrieval, scoring, and packaging.
+
+  Prerequisite: the case must have completed vectorization (status
+  "validation_ready" or "under_review"). Use GET /api/mtr/{case_id}/status
+  to confirm before calling this endpoint.
+
+  This endpoint is the primary entry point for external web apps and AI agents
+  that need to reason about MTR compliance against CMS specifications.
+
+URL:
+  http://localhost:7071/api/mtr/{case_id}/evaluate
+
+Method: POST
+
+Path Parameters:
+  NAME       TYPE    REQUIRED  DESCRIPTION
+  case_id    string  YES       UUID returned by POST /api/mtr/intake.
+                               A LanceDB table must already exist for this case.
+
+Request Format:
+  Content-Type: application/json
+
+Request Body Schema:
+  {
+    "requirement_text":  string    (required)  — Natural-language requirement or question
+                                                 to evaluate against the MTR document.
+                                                 Examples:
+                                                   "Verify tensile strength meets CMS-107 minimum"
+                                                   "Confirm heat number matches PO reference"
+                                                   "Check Charpy impact values at -40F"
+
+    "semantic_classes":  string[]  (optional)  — Restrict MTR vector search to chunks
+                                                 of these semantic classes only.
+                                                 Valid values:
+                                                   "chemistry"      — chemical composition
+                                                   "mechanical"     — tensile, yield, elongation
+                                                   "charpy"         — Charpy/CVN impact results
+                                                   "hardness"       — hardness test results
+                                                   "heat_treatment" — heat treat records
+                                                   "ndt"            — nondestructive examination
+                                                   "identity"       — heat#, grade, PO
+                                                   "other"          — unclassified blocks
+                                                 Omit to search all classes.
+
+    "cms_numbers":       string[]  (optional)  — Restrict CMS spec query to these specs.
+                                                 Examples: ["CMS-107", "CMS-002"]
+                                                 Omit to search across all seeded CMS specs.
+
+    "top_k":             integer   (optional)  — Maximum hits returned per table.
+                                                 Default: 8. Maximum: 20.
+
+    "min_score":         float     (optional)  — Minimum cosine similarity score threshold
+                                                 (range 0.0–1.0). Hits below this score are
+                                                 discarded before returning. Default: 0.0
+                                                 (return all hits). Recommended: 0.5–0.65
+                                                 for focused evidence; 0.0 for exploration.
+
+    "include_cms":       boolean   (optional)  — Whether to also query the shared
+                                                 cms_spec_chunks table for matching CMS rule
+                                                 text. Default: true. Set false for MTR-only
+                                                 retrieval when CMS context is not needed.
+  }
+
+Success Response:
+  HTTP 200 OK
+  Content-Type: application/json
+
+  Body schema:
+    {
+      "case_id":          string       — UUID of the MTR validation case
+      "requirement_text": string       — the requirement text as submitted (echoed)
+      "queried_at":       string       — ISO-8601 UTC timestamp of this query
+
+      "filters_applied": {
+        "semantic_classes": string[] | null   — class filter applied (null = all)
+        "cms_numbers":      string[] | null   — CMS filter applied (null = all)
+        "top_k":            integer           — max hits requested per table
+        "min_score":        float             — minimum score threshold applied
+        "include_cms":      boolean           — whether CMS table was queried
+      },
+
+      "mtr_hits": [
+        {
+          "chunk_index":      integer           — position of chunk in document
+          "semantic_class":   string            — classified type of this chunk
+          "confidence":       string            — "high" | "medium" | "low"
+          "vector_score":     float             — cosine similarity to requirement (0–1);
+                                                  higher = more relevant
+          "page_no":          integer           — source page in the MTR document
+          "heading_context":  string            — nearest heading above this chunk
+          "text":             string            — raw chunk text as extracted by Docling
+          "extracted_fields": object            — key-value fields parsed from this chunk
+                                                  (e.g. {"yield_ksi": 95.2, "heat_number": "123456"})
+          "provider_name":    string | null     — sub-supplier identified in this chunk
+          "provider_code":    string | null     — process code identified in this chunk
+          "bbox":             object            — bounding box on source page
+                                                  {"l": float, "t": float, "r": float, "b": float}
+        }, ...
+      ],
+
+      "cms_hits": [
+        {
+          "id":                string            — unique CMS chunk ID
+          "cms_number":        string            — CMS spec (e.g. "CMS-107")
+          "canonical_section": string            — section label (e.g. "mechanical_properties")
+          "section_path":      string[]          — hierarchical breadcrumb within the spec
+          "text":              string            — authoritative CMS rule text
+          "params":            object | object[] — numeric parameters extracted from rule
+                                                   (lo, hi, unit, context)
+          "vector_score":      float             — cosine similarity to requirement (0–1)
+        }, ...
+      ],
+
+      "confidence_summary": {
+        "mtr_hits_returned":            integer  — count of MTR evidence chunks returned
+        "cms_hits_returned":            integer  — count of CMS rule chunks returned
+        "semantic_class_distribution":  object   — {class: count} for returned MTR hits
+        "top_mtr_vector_score":         float | null  — highest cosine score in mtr_hits
+        "top_cms_vector_score":         float | null  — highest cosine score in cms_hits
+        "cms_sections_found":           string[] — distinct canonical_section values in cms_hits
+        "ambiguity_flag":               boolean  — true when top_mtr_vector_score < 0.75,
+                                                   indicating uncertain alignment; consider
+                                                   rephrasing the requirement or lowering top_k
+      }
+    }
+
+Error Responses:
+  400 {"error": "Missing route parameter: case_id"}
+             — case_id not in route path
+  400 {"error": "Invalid or missing JSON body."}
+             — request body is not valid JSON or is absent
+  400 {"error": "Missing required field: 'requirement_text'..."}
+             — requirement_text is absent or empty string
+  404 {"error": "No vector table found for case: <case_id>..."}
+             — case_id is unknown or vectorization has not completed
+  502 {"error": "Embedding API error: <detail>"}
+             — Azure OpenAI embedding call failed
+  500 {"error": "LanceDB query error: <detail>"}
+             — Vector store query failed
+  503 {"error": "Azure OpenAI configuration missing: <detail>"}
+             — Required env vars AZURE_OPENAI_API_KEY or AZURE_OPENAI_ENDPOINT not set
+
+Usage Pattern for External Agent Reasoning:
+  1. Confirm the case is vectorized:
+       GET /api/mtr/{case_id}/status  — wait for "validation_ready" or "under_review"
+  2. Retrieve gate context (optional):
+       GET /api/mtr/{case_id}/validation  — gate 0/1 results and chunk classifications
+  3. For each requirement to evaluate:
+       POST /api/mtr/{case_id}/evaluate   — submit requirement_text; receive evidence packets
+  4. Pass evidence packets to your OpenAI agent:
+       - Constrain agent to mtr_hits[].text + cms_hits[].text only
+       - Require agent to cite chunk_index and cms hit id in its output
+       - Use ambiguity_flag to decide whether to invoke LLM or run deterministic check
+  5. Record agent disposition with citations in your application database
+
+Score Interpretation:
+  vector_score range   Interpretation
+  -------------------  --------------------------------------------------------
+  0.85 – 1.00          Strong alignment — high confidence the chunk is relevant
+  0.70 – 0.84          Good alignment — suitable for deterministic evaluation
+  0.55 – 0.69          Moderate — may be relevant; surface for LLM review
+  0.40 – 0.54          Weak — likely tangential; use only if no better hits exist
+  < 0.40               Poor alignment — chunk probably unrelated to requirement
+
+  ambiguity_flag = true (top_mtr_vector_score < 0.75) signals that the best MTR
+  hit is below the reliable threshold. Recommended actions:
+    - Rephrase requirement_text to be more specific
+    - Broaden semantic_classes (or remove filter)
+    - Lower min_score to 0.0 and inspect returned chunk text manually
+    - Escalate directly to human QE review
+
+---
+Example — Python (requests): single-requirement evaluation
+---
+
+  import requests
+
+  BASE_URL = "http://localhost:7071/api"
+
+  def evaluate_requirement(case_id: str, requirement: str, **kwargs) -> dict:
+      resp = requests.post(
+          f"{BASE_URL}/mtr/{case_id}/evaluate",
+          json={"requirement_text": requirement, **kwargs},
+          timeout=60,
+      )
+      if resp.status_code == 404:
+          raise ValueError(resp.json()["error"])
+      resp.raise_for_status()
+      return resp.json()
+
+  CASE_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+  # Evaluate tensile strength requirement — restrict to mechanical chunks
+  result = evaluate_requirement(
+      CASE_ID,
+      requirement="Verify yield strength and tensile strength meet CMS-107 minimum values",
+      semantic_classes=["mechanical"],
+      cms_numbers=["CMS-107", "CMS-002"],
+      top_k=8,
+      min_score=0.5,
+  )
+  print(f"MTR hits: {result['confidence_summary']['mtr_hits_returned']}")
+  print(f"Top MTR score: {result['confidence_summary']['top_mtr_vector_score']}")
+  print(f"Ambiguity flag: {result['confidence_summary']['ambiguity_flag']}")
+
+  # Show retrieved MTR evidence
+  for hit in result["mtr_hits"]:
+      print(f"  [chunk {hit['chunk_index']} | p{hit['page_no']} | score {hit['vector_score']}]")
+      print(f"    class: {hit['semantic_class']}  confidence: {hit['confidence']}")
+      print(f"    heading: {hit['heading_context']}")
+      print(f"    fields: {hit['extracted_fields']}")
+      print(f"    text: {hit['text'][:200]}")
+
+  # Show retrieved CMS rule text
+  for hit in result["cms_hits"]:
+      print(f"  [CMS {hit['cms_number']} | {hit['canonical_section']} | score {hit['vector_score']}]")
+      print(f"    params: {hit['params']}")
+      print(f"    text: {hit['text'][:200]}")
+
+---
+Example — Python (requests): multi-requirement sweep for agent
+---
+
+  import requests, json
+
+  BASE_URL = "http://localhost:7071/api"
+  CASE_ID  = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+  # Define all requirements to evaluate for this case
+  REQUIREMENTS = [
+      {
+          "requirement_text": "Confirm heat number and grade are present and traceable to PO",
+          "semantic_classes": ["identity"],
+      },
+      {
+          "requirement_text": "Verify carbon, manganese, and phosphorus chemistry against CMS-107 spec limits",
+          "semantic_classes": ["chemistry"],
+          "cms_numbers": ["CMS-107"],
+      },
+      {
+          "requirement_text": "Yield strength minimum 75 ksi and tensile strength minimum 95 ksi",
+          "semantic_classes": ["mechanical"],
+          "cms_numbers": ["CMS-107", "CMS-002"],
+      },
+      {
+          "requirement_text": "Charpy CVN impact energy at -40F meets 20 ft-lb minimum average",
+          "semantic_classes": ["charpy"],
+          "cms_numbers": ["CMS-004"],
+      },
+      {
+          "requirement_text": "Heat treatment documented — quench and temper, austenitizing temp recorded",
+          "semantic_classes": ["heat_treatment"],
+          "cms_numbers": ["CMS-107"],
+      },
+  ]
+
+  evidence_packets = []
+  for req in REQUIREMENTS:
+      resp = requests.post(
+          f"{BASE_URL}/mtr/{CASE_ID}/evaluate",
+          json={"top_k": 6, "min_score": 0.45, **req},
+          timeout=60,
+      )
+      resp.raise_for_status()
+      evidence_packets.append(resp.json())
+      cs = resp.json()["confidence_summary"]
+      print(f"[{req['requirement_text'][:60]}]")
+      print(f"  MTR hits: {cs['mtr_hits_returned']}")
+      print(f"  CMS hits: {cs['cms_hits_returned']}")
+      print(f"  Top MTR score: {cs['top_mtr_vector_score']}")
+      print(f"  Ambiguity: {cs['ambiguity_flag']}")
+
+  # Serialize evidence packets for an OpenAI agent call
+  agent_context = json.dumps(evidence_packets, indent=2, ensure_ascii=False)
+  print(f"\nTotal context length for agent: {len(agent_context)} chars")
+
+---
+Example — Python (OpenAI agent integration)
+---
+
+  import requests, json
+  from openai import AzureOpenAI
+
+  BASE_URL = "http://localhost:7071/api"
+  CASE_ID  = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+  # 1. Retrieve evidence from the evaluate endpoint
+  eval_resp = requests.post(
+      f"{BASE_URL}/mtr/{CASE_ID}/evaluate",
+      json={
+          "requirement_text": "Yield strength minimum 75 ksi and tensile minimum 95 ksi",
+          "semantic_classes": ["mechanical"],
+          "cms_numbers": ["CMS-107"],
+          "top_k": 6,
+          "min_score": 0.5,
+      },
+      timeout=60,
+  ).json()
+
+  mtr_evidence = eval_resp["mtr_hits"]
+  cms_evidence = eval_resp["cms_hits"]
+  ambiguous    = eval_resp["confidence_summary"]["ambiguity_flag"]
+
+  # 2. Build agent prompt (constrained to retrieved evidence only)
+  agent_prompt = f"""
+  You are a materials engineer reviewing an MTR for compliance against CMS specifications.
+  Evaluate ONLY the evidence provided below. Do not infer information not present.
+
+  REQUIREMENT:
+  {eval_resp['requirement_text']}
+
+  MTR EVIDENCE (from document, in order of relevance):
+  {json.dumps([{"chunk": h['chunk_index'], "class": h['semantic_class'],
+                "score": h['vector_score'], "fields": h['extracted_fields'],
+                "text": h['text']} for h in mtr_evidence], indent=2)}
+
+  CMS SPECIFICATION RULES (authoritative requirement text):
+  {json.dumps([{"spec": h['cms_number'], "section": h['canonical_section'],
+                "params": h['params'], "text": h['text']} for h in cms_evidence], indent=2)}
+
+  Respond with a JSON object:
+  {{
+    "result":           "pass" | "fail" | "review",
+    "reason":           "<concise explanation citing specific values and spec limits>",
+    "cited_mtr_chunks": [<chunk_index integers>],
+    "cited_cms_hits":   ["<cms_number:canonical_section>"],
+    "missing_evidence": "<describe if any required data is absent from retrieved chunks>"
+  }}
+  """
+
+  # 3. Call OpenAI agent — constrained reasoning only
+  client = AzureOpenAI(
+      api_key="YOUR_KEY",
+      azure_endpoint="https://YOUR_RESOURCE.openai.azure.com/",
+      api_version="2024-02-01",
+  )
+  # Only invoke LLM if retrieval confidence warrants it
+  if not ambiguous or len(mtr_evidence) > 0:
+      response = client.chat.completions.create(
+          model="gpt-4o",
+          messages=[{"role": "user", "content": agent_prompt}],
+          response_format={"type": "json_object"},
+          temperature=0.0,
+      )
+      decision = json.loads(response.choices[0].message.content)
+      print(f"Result: {decision['result']}")
+      print(f"Reason: {decision['reason']}")
+      print(f"Cited MTR chunks: {decision['cited_mtr_chunks']}")
+      print(f"Cited CMS rules: {decision['cited_cms_hits']}")
+      if decision.get("missing_evidence"):
+          print(f"Missing evidence: {decision['missing_evidence']}")
+  else:
+      print("Ambiguity flag set and no MTR hits — escalate to human QE review")
+
+---
+Example — JavaScript (fetch)
+---
+
+  const BASE_URL = "http://localhost:7071/api";
+
+  async function evaluateRequirement(caseId, requirementText, options = {}) {
+    const resp = await fetch(`${BASE_URL}/mtr/${caseId}/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requirement_text: requirementText, ...options }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error);
+    }
+    return resp.json();
+  }
+
+  const CASE_ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
+
+  const result = await evaluateRequirement(
+    CASE_ID,
+    "Verify chemistry carbon content is within CMS-107 limits",
+    { semantic_classes: ["chemistry"], cms_numbers: ["CMS-107"], top_k: 6, min_score: 0.5 }
+  );
+
+  console.log("MTR hits:", result.mtr_hits.length);
+  console.log("CMS hits:", result.cms_hits.length);
+  console.log("Ambiguity flag:", result.confidence_summary.ambiguity_flag);
+
+  for (const hit of result.mtr_hits) {
+    console.log(`[chunk ${hit.chunk_index} | p${hit.page_no} | score ${hit.vector_score}]`);
+    console.log(`  ${hit.text.substring(0, 200)}`);
+    console.log("  Extracted fields:", hit.extracted_fields);
+  }
+
+  for (const hit of result.cms_hits) {
+    console.log(`[${hit.cms_number} | ${hit.canonical_section} | score ${hit.vector_score}]`);
+    console.log(`  ${hit.text.substring(0, 200)}`);
+  }
+
+  console.log("Chunk class distribution:", result.confidence_summary.semantic_class_distribution);
+
+---
+Example — curl
+---
+
+  CASE_ID="3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+  # Basic: evaluate a requirement against all chunk classes and all CMS specs
+  curl -s -X POST "http://localhost:7071/api/mtr/${CASE_ID}/evaluate" \
+    -H "Content-Type: application/json" \
+    -d '{"requirement_text": "Verify yield strength meets minimum requirements"}' \
+    | python -m json.tool
+
+  # Targeted: chemistry only, CMS-107 spec, min score 0.6
+  curl -s -X POST "http://localhost:7071/api/mtr/${CASE_ID}/evaluate" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "requirement_text": "Carbon content within CMS-107 chemistry limits",
+      "semantic_classes": ["chemistry"],
+      "cms_numbers": ["CMS-107"],
+      "top_k": 5,
+      "min_score": 0.6
+    }' | python -m json.tool
+
+  # MTR-only: skip CMS spec lookup
+  curl -s -X POST "http://localhost:7071/api/mtr/${CASE_ID}/evaluate" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "requirement_text": "Heat number and PO number traceability",
+      "semantic_classes": ["identity"],
+      "include_cms": false
+    }' | python -m json.tool
+
+  # Confidence summary only
+  curl -s -X POST "http://localhost:7071/api/mtr/${CASE_ID}/evaluate" \
+    -H "Content-Type: application/json" \
+    -d '{"requirement_text": "tensile yield strength", "top_k": 10}' \
+    | python -c "
+  import sys, json
+  r = json.load(sys.stdin)
+  cs = r['confidence_summary']
+  print('MTR hits:', cs['mtr_hits_returned'])
+  print('CMS hits:', cs['cms_hits_returned'])
+  print('Top MTR score:', cs['top_mtr_vector_score'])
+  print('Ambiguity:', cs['ambiguity_flag'])
+  print('Classes:', cs['semantic_class_distribution'])
+  print('CMS sections:', cs['cms_sections_found'])
+  "
+
+  # Test missing case (expect 404)
+  curl -s -X POST "http://localhost:7071/api/mtr/00000000-0000-0000-0000-000000000000/evaluate" \
+    -H "Content-Type: application/json" \
+    -d '{"requirement_text": "test"}'
+  # -> {"error": "No vector table found for case: 00000000-0000-0000-0000-000000000000..."}
+
+  # Test missing requirement_text (expect 400)
+  curl -s -X POST "http://localhost:7071/api/mtr/${CASE_ID}/evaluate" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+  # -> {"error": "Missing required field: 'requirement_text'..."}
+
+======================================================================
 INTERNAL — QUEUE TRIGGER: mtr_intake_processor
 ======================================================================
 
@@ -1154,6 +1630,7 @@ Confirm startup output shows:
     http_mtr_intake:          [POST] http://localhost:7071/api/mtr/intake
     http_mtr_status:          [GET]  http://localhost:7071/api/mtr/{case_id}/status
     http_mtr_validation:      [GET]  http://localhost:7071/api/mtr/{case_id}/validation
+    http_mtr_evaluate:        [POST] http://localhost:7071/api/mtr/{case_id}/evaluate
     mtr_intake_processor:     queueTrigger  (mtr-intake-queue)
     mtr_vectorize_processor:  queueTrigger  (mtr-vectorize-queue)
 

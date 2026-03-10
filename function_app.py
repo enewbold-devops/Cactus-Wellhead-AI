@@ -57,6 +57,15 @@ def _error_response(message: str, status_code: int = 500) -> func.HttpResponse:
     return _json_response({"error": message}, status_code=status_code)
 
 
+def _safe_json_parse(raw: str | None, default=None):
+    """Silently parse a JSON string; return default on failure."""
+    if not raw:
+        return default if default is not None else {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default if default is not None else {}
+
 
 # ------------------------------------------------------------------
 # Route 1 — GET /api/cms/providers
@@ -312,6 +321,195 @@ def http_mtr_validation(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     return _json_response(record)
+
+
+# ------------------------------------------------------------------
+# Route 7 — POST /api/mtr/{case_id}/evaluate
+# Requirement Evaluator: embeds a free-text requirement string, runs a
+# hybrid (vector + metadata) query against the per-case LanceDB table,
+# and optionally cross-queries the shared CMS spec chunks table.
+# Returns structured evidence packets for external agent-side reasoning.
+#
+# Request body (JSON):
+#   requirement_text  str   — the requirement or question to evaluate (required)
+#   semantic_classes  list  — restrict MTR hits to these classes (optional)
+#   cms_numbers       list  — restrict CMS hits to these specs (optional)
+#   top_k             int   — max hits per table, default 8, max 20 (optional)
+#   min_score         float — discard hits below this cosine similarity (optional)
+#   include_cms       bool  — also query CMS spec table, default true (optional)
+# ------------------------------------------------------------------
+
+@app.route(route="mtr/{case_id}/evaluate", methods=["POST"])
+def http_mtr_evaluate(req: func.HttpRequest) -> func.HttpResponse:
+    case_id: str = req.route_params.get("case_id", "").strip()
+    logging.info("[mtr/evaluate] request received case_id=%s", case_id)
+
+    if not case_id:
+        return _error_response("Missing route parameter: case_id", status_code=400)
+
+    # ── Parse request body ───────────────────────────────────────────────
+    try:
+        body: dict = req.get_json()
+    except Exception:
+        return _error_response("Invalid or missing JSON body.", status_code=400)
+
+    requirement_text: str = (body.get("requirement_text") or "").strip()
+    if not requirement_text:
+        return _error_response(
+            "Missing required field: 'requirement_text' — provide the requirement "
+            "or question text to evaluate against the MTR.",
+            status_code=400,
+        )
+
+    semantic_classes: list[str] | None = body.get("semantic_classes") or None
+    cms_numbers: list[str] | None = body.get("cms_numbers") or None
+    top_k: int = max(1, min(int(body.get("top_k", 8)), 20))
+    min_score: float = float(body.get("min_score", 0.0))
+    include_cms: bool = bool(body.get("include_cms", True))
+
+    # ── Lazy imports (keep heavy deps away from cold HTTP path) ──────────
+    from openai import AzureOpenAI
+    from py_vectodb import LanceDBManager
+
+    # ── Check environment ────────────────────────────────────────────────
+    try:
+        oai_client = AzureOpenAI(
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            api_version="2024-02-01",
+        )
+    except KeyError as exc:
+        logging.error("[mtr/evaluate] missing Azure OpenAI env var: %s", exc)
+        return _error_response(f"Azure OpenAI configuration missing: {exc}", status_code=503)
+
+    # ── 1. Verify the case vector table exists ───────────────────────────
+    mgr = LanceDBManager()
+    if not mgr.case_table_exists(case_id):
+        return _error_response(
+            f"No vector table found for case: {case_id}. "
+            "Case may not have completed vectorization — check /api/mtr/{case_id}/status.",
+            status_code=404,
+        )
+
+    # ── 2. Embed the requirement text ────────────────────────────────────
+    EMBED_DEPLOYMENT = os.environ.get("AZURE_OPENAI_EMBED_DEPLOYMENT", "text-embedding-3-large")
+    try:
+        embed_response = oai_client.embeddings.create(
+            input=[requirement_text],
+            model=EMBED_DEPLOYMENT,
+            dimensions=3072,
+        )
+        query_vector: list[float] = embed_response.data[0].embedding
+        logging.info(
+            "[mtr/evaluate] embedded requirement text (%d dims) case_id=%s",
+            len(query_vector), case_id,
+        )
+    except Exception as exc:
+        logging.exception("[mtr/evaluate] embedding API failed case_id=%s", case_id)
+        return _error_response(f"Embedding API error: {exc}", status_code=502)
+
+    queried_at = datetime.now(timezone.utc).isoformat()
+
+    # ── 3. Query per-case MTR vector table ───────────────────────────────
+    try:
+        mtr_raw = mgr.query_case_chunks_for_eval(
+            case_id,
+            query_vector,
+            semantic_classes=semantic_classes,
+            limit=top_k,
+            min_score=min_score,
+        )
+    except Exception as exc:
+        logging.exception("[mtr/evaluate] LanceDB case query failed case_id=%s", case_id)
+        return _error_response(f"LanceDB query error: {exc}", status_code=500)
+
+    mtr_hits = [
+        {
+            "chunk_index":      r.get("chunk_index"),
+            "semantic_class":   r.get("semantic_class"),
+            "confidence":       r.get("confidence"),
+            "vector_score":     r.get("vector_score"),
+            "page_no":          r.get("page_no"),
+            "heading_context":  r.get("heading_context"),
+            "text":             r.get("text"),
+            "extracted_fields": _safe_json_parse(r.get("extracted_fields"), default={}),
+            "provider_name":    r.get("provider_name"),
+            "provider_code":    r.get("provider_code"),
+            "bbox":             _safe_json_parse(r.get("bbox"), default={}),
+        }
+        for r in mtr_raw
+    ]
+    logging.info(
+        "[mtr/evaluate] MTR query returned %d hits case_id=%s", len(mtr_hits), case_id
+    )
+
+    # ── 4. Query shared CMS spec table (optional) ────────────────────────
+    cms_hits: list[dict] = []
+    if include_cms:
+        try:
+            cms_raw = mgr.query_cms_table_for_eval(
+                query_vector,
+                cms_numbers=cms_numbers,
+                limit=top_k,
+                min_score=min_score,
+            )
+            cms_hits = [
+                {
+                    "id":                r.get("id"),
+                    "cms_number":        r.get("cms_number"),
+                    "canonical_section": r.get("canonical_section"),
+                    "section_path":      _safe_json_parse(r.get("section_path"), default=[]),
+                    "text":              r.get("text"),
+                    "params":            _safe_json_parse(r.get("params"), default={}),
+                    "vector_score":      r.get("vector_score"),
+                }
+                for r in cms_raw
+            ]
+            logging.info(
+                "[mtr/evaluate] CMS query returned %d hits case_id=%s", len(cms_hits), case_id
+            )
+        except Exception as exc:
+            # CMS table may not be seeded yet — non-fatal
+            logging.warning("[mtr/evaluate] CMS query failed (non-fatal): %s", exc)
+
+    # ── 5. Confidence summary ────────────────────────────────────────────
+    class_distribution: dict[str, int] = {}
+    for hit in mtr_hits:
+        cls = hit["semantic_class"] or "other"
+        class_distribution[cls] = class_distribution.get(cls, 0) + 1
+
+    cms_sections = list({h["canonical_section"] for h in cms_hits if h.get("canonical_section")})
+    top_mtr_score = mtr_hits[0]["vector_score"] if mtr_hits else None
+    top_cms_score = cms_hits[0]["vector_score"] if cms_hits else None
+
+    confidence_summary = {
+        "mtr_hits_returned":         len(mtr_hits),
+        "cms_hits_returned":         len(cms_hits),
+        "semantic_class_distribution": class_distribution,
+        "top_mtr_vector_score":      top_mtr_score,
+        "top_cms_vector_score":      top_cms_score,
+        "cms_sections_found":         cms_sections,
+        # Flag as ambiguous when best MTR hit is below 0.75 cosine similarity
+        "ambiguity_flag":            top_mtr_score is not None and top_mtr_score < 0.75,
+    }
+
+    return _json_response(
+        {
+            "case_id":          case_id,
+            "requirement_text": requirement_text,
+            "queried_at":       queried_at,
+            "filters_applied": {
+                "semantic_classes": semantic_classes,
+                "cms_numbers":      cms_numbers,
+                "top_k":            top_k,
+                "min_score":        min_score,
+                "include_cms":      include_cms,
+            },
+            "mtr_hits":          mtr_hits,
+            "cms_hits":          cms_hits,
+            "confidence_summary": confidence_summary,
+        }
+    )
 
 
 # ------------------------------------------------------------------
@@ -644,7 +842,7 @@ def mtr_vectorize_processor(msg: func.QueueMessage) -> None:
         """Extract heading_context, provider_name, provider_city, provider_code from chunk meta."""
         meta: dict = chunk.get("meta", {})
         heading_context = ""
-        provider_name = ""
+        provider_name = "" 
         provider_city = ""
         provider_code = ""
         try:
